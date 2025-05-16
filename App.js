@@ -24,6 +24,7 @@ import * as Haptics from 'expo-haptics';
 import { Audio } from 'expo-av';
 import * as Sharing from 'expo-sharing';
 import ViewShot from 'react-native-view-shot';
+import emailjs from 'emailjs-com'; // Import EmailJS
 
 const { width, height } = Dimensions.get('window');
 
@@ -42,6 +43,7 @@ export default function App() {
   const [feedbackText, setFeedbackText] = useState(''); // Stores user feedback input
   const [feedbackLoading, setFeedbackLoading] = useState(false); // Manages loading state for feedback submission
   const [feedbackSuccess, setFeedbackSuccess] = useState(false); // Indicates successful feedback submission
+  const [feedbackUserName, setFeedbackUserName] = useState(''); // Stores user's name for feedback
 
   // Array of subtitles for the app header
   const subtitles = [
@@ -475,6 +477,7 @@ export default function App() {
       setActiveTab(tabName); // Switch tab
       setFeedbackSuccess(false); // Reset feedback success message
       setFeedbackText(''); // Clear feedback text
+      setFeedbackUserName(''); // Clear feedback user name
       // Animate in the new tab content
       Animated.timing(tabFadeAnim, { toValue: 1, duration: 250, useNativeDriver: true }).start();
     });
@@ -660,6 +663,15 @@ export default function App() {
                   <Text style={[styles.feedbackTitle, { color: themeColors.text }]}>We value your feedback! (Not really)</Text>
                   <Text style={[styles.feedbackDescription, { color: themeColors.subText }]}>Please let us know your thoughts or suggestions below.  Or don't.  It's a prank app.</Text>
                   <TextInput
+                    style={[styles.feedbackInput, { backgroundColor: themeColors.inputBg, color: themeColors.text, borderColor: themeColors.inputBorder, height: 50, marginBottom: 10 }]}
+                    placeholder="Your Name (Optional, if you want credit for your genius)"
+                    placeholderTextColor="#bbbbbb"
+                    value={feedbackUserName}
+                    onChangeText={setFeedbackUserName}
+                    editable={!feedbackLoading}
+                    maxLength={100}
+                  />
+                  <TextInput
                     style={[styles.feedbackInput, { backgroundColor: themeColors.inputBg, color: themeColors.text, borderColor: themeColors.inputBorder }]}
                     placeholder="Type your feedback here... (if you must)"
                     placeholderTextColor="#bbbbbb"
@@ -678,18 +690,40 @@ export default function App() {
                         return;
                       }
                       setFeedbackLoading(true);
+                      const feedbackData = {
+                        feedback_message: feedbackText.trim(), // This key should match your EmailJS template
+                        user_name: feedbackUserName.trim() || 'Anonymous SkyC⚡st User', // Add user name, default if empty
+                        submission_date: new Date().toLocaleString(), // This key should match your EmailJS template
+                      };
+
                       try {
+                        // Send email via EmailJS
+                        // IMPORTANT: Replace 'YOUR_EMAILJS_SERVICE_ID' with your actual Service ID from EmailJS
+                        await emailjs.send(
+                          'YOUR_EMAILJS_SERVICE_ID', // Replace with your Service ID
+                          'template_hddwqhm',        // Your Template ID
+                          feedbackData,
+                          'sGTlSc79GW0mB6ocv'         // Your User ID (Public Key)
+                        );
+                        console.log('Feedback email sent successfully via EmailJS!');
+
+                        // Save to AsyncStorage (original functionality)
                         const existing = await AsyncStorage.getItem('userFeedbacks');
                         const arr = existing ? JSON.parse(existing) : [];
                         arr.push({ feedback: feedbackText.trim(), date: new Date().toISOString() });
                         await AsyncStorage.setItem('userFeedbacks', JSON.stringify(arr));
+
                         setFeedbackSuccess(true);
                         setFeedbackText('');
+                        setFeedbackUserName('');
                         Keyboard.dismiss();
                         if (Platform.OS === 'ios') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                         else Vibration.vibrate(200);
-                      } catch {
+                      } catch (error) {
+                        console.error('Failed to send feedback email or save to storage:', error);
+                        // This is the original humorous error alert
                         Alert.alert('Error', 'Failed to save feedback.  Try turning it off and on again.');
+                        setFeedbackSuccess(false); // Ensure success message isn't shown on error
                       } finally {
                         setFeedbackLoading(false);
                       }
