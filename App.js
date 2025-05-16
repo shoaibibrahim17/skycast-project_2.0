@@ -505,7 +505,7 @@ export default function App() {
           </TouchableOpacity>
         </View>
 
-        <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
+        <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.mainContent}>
             <Animated.View style={{ flex: 1, width: '100%', opacity: tabFadeAnim }}>
               {/* Conditional rendering based on active tab */}
@@ -716,10 +716,13 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  scrollView: { // Added style for the ScrollView
+    flex: 1,
+  },
   background: {
     flex: 1,
     width: '100%',
-    height: '100%',
+    // height: '100%', // flex: 1 is usually sufficient here
   },
   scrollContainer: {
     flexGrow: 1, // Ensures content can scroll if it overflows
