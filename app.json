@@ -17,7 +17,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/skycast_apaptive.png",
+        "foregroundImage": "./assets/skycast_adaptive.png",
         "backgroundColor": "#ffffff"
       },
       "package": "com.shoaibibrahim17.snack71a282dd79b447c8967fe904f66939d7"
