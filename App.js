@@ -17,6 +17,7 @@ import {
   Dimensions,
   Switch,
   Keyboard,
+  Easing, // Import Easing for animated effects
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -24,9 +25,59 @@ import * as Haptics from 'expo-haptics';
 import { Audio } from 'expo-av';
 import * as Sharing from 'expo-sharing';
 import ViewShot from 'react-native-view-shot';
-import emailjs from 'emailjs-com'; // Import EmailJS
 
 const { width, height } = Dimensions.get('window');
+
+// --- THEME COLORS ---
+const lightTheme = {
+  gradientColors: ['#6DD5FA', '#FF7F00'], // Light blue to orange
+  text: '#333333',
+  subText: '#555555',
+  accentColor: '#FF7F00',
+  inputBg: '#FFFFFF',
+  inputBorder: '#CCCCCC',
+  buttonBg: '#4c669f',
+  cardBg: 'rgba(255, 255, 255, 0.9)',
+  tabActive: '#4c669f',
+  tabInactive: '#999999',
+  factBg: 'rgba(255, 255, 255, 0.8)',
+};
+
+const darkTheme = {
+  gradientColors: ['#1A2980', '#26D0CE'], // Dark blue to turquoise
+  text: '#FFFFFF',
+  subText: '#BBBBBB',
+  accentColor: '#26D0CE',
+  inputBg: '#333333',
+  inputBorder: '#555555',
+  buttonBg: '#26D0CE',
+  cardBg: 'rgba(0, 0, 0, 0.6)',
+  tabActive: '#26D0CE',
+  tabInactive: '#666666',
+  factBg: 'rgba(0, 0, 0, 0.7)',
+};
+
+// --- SUBTITLES ---
+const SUBTITLES = [
+  "No filter, just forecast.",
+  "Weather, unadulterated.",
+  "Forecasts, straight up.",
+  "Your daily dose of meteorological mayhem."
+];
+
+// --- FAKE WEATHER FACTS ---
+const WEATHER_FACTS = [
+  "Did you know: Clouds are just the Earth's pillows. That's why it's always so sleepy.",
+  "A single raindrop can weigh more than your entire life's regrets. Probably.",
+  "The wind isn't just moving air, it's the Earth sighing dramatically.",
+  "If you hear thunder, it means the sky is playing bowling. Don't worry, it's not very good.",
+  "Sunsets are just the sun doing a mic drop after a long day of shining.",
+  "Snowflakes are like tiny, frozen personal trainers - they make you work harder for warmth.",
+  "Fog is just clouds coming down to give you a hug. A damp, vision-obscuring hug.",
+  "Rainbows are proof that the sky has an excellent sense of fashion.",
+  "Tornadoes are the Earth's way of demonstrating its spin moves.",
+  "The weather forecast is usually 50% accurate. The other 50% is pure optimism.",
+];
 
 export default function App() {
   // State hooks for various app functionalities
@@ -34,454 +85,351 @@ export default function App() {
   const [location, setLocation] = useState(''); // Stores user input for location
   const [loading, setLoading] = useState(false); // Manages loading state for API calls
   const [result, setResult] = useState(null); // Stores the final prank result
-  const [showRealWeather, setShowRealWeather] = useState(false); // Toggles "real weather" button (still a prank)
-  const [fakeData, setFakeData] = useState(null); // Stores temporarily displayed fake weather data
-  const [darkMode, setDarkMode] = useState(false); // Manages dark mode state
-  const [usedRoasts, setUsedRoasts] = useState([]); // Stores used roasting lines to avoid repetition
-  const [weatherFact, setWeatherFact] = useState(null); // Stores the currently displayed weather fact
-  const [prankCount, setPrankCount] = useState(0); // Counts how many times the user has been pranked
-  const [feedbackText, setFeedbackText] = useState(''); // Stores user feedback input
-  const [feedbackLoading, setFeedbackLoading] = useState(false); // Manages loading state for feedback submission
-  const [feedbackSuccess, setFeedbackSuccess] = useState(false); // Indicates successful feedback submission
-  const [feedbackUserName, setFeedbackUserName] = useState(''); // Stores user's name for feedback
+  const [showRealWeather, setShowRealWeather] = useState(false); // Toggles visibility of "Show Real Weather" button
+  const [darkMode, setDarkMode] = useState(true); // Manages dark mode state
+  const [fakeData, setFakeData] = useState(null); // Stores fake weather data
+  const [currentSubtitleIndex, setCurrentSubtitleIndex] = useState(0); // Index for rotating subtitles
+  const [weatherFact, setWeatherFact] = useState(''); // Stores the current weather fact
+  const [currentLoadingMsg, setCurrentLoadingMsg] = useState('Consulting the cosmic currents...'); // Dynamic loading messages
 
-  // Array of subtitles for the app header
-  const subtitles = [
-    "Made with the help of Tony Stark (kinda)",
-    "Your Friendly Neighborhood Weather Report",
-    "Powered by Stark Industries (Not Really)",
-    "The Weather App Loki Would Use",
-    "Assembled in a cave! With a box of scraps!",
-    "Bringing you the weather, whether you like it or no",
-    "We predict the weather... poorly",
-    "Even the Asgardians use this app to predict the weather",
-  ];
-  const [currentSubtitleIndex, setCurrentSubtitleIndex] = useState(0); // Index for cycling through subtitles
+  // Feedback tab states
+  const [feedbackText, setFeedbackText] = useState('');
+  const [feedbackUserName, setFeedbackUserName] = useState('');
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
+  const [feedbackSuccess, setFeedbackSuccess] = useState(false);
 
-  // Refs for animations and other components
-  const viewShotRef = useRef(); // Ref for taking screenshots
-  const fadeAnim = useRef(new Animated.Value(0)).current; // Animation value for fade-in effect
-  const slideAnim = useRef(new Animated.Value(50)).current; // Animation value for slide-up effect
-  const scaleAnim = useRef(new Animated.Value(0.8)).current; // Animation value for scale effect
-  const rotateLogo = useRef(new Animated.Value(0)).current; // Animation value for logo rotation
-  const factFadeAnim = useRef(new Animated.Value(1)).current; // Animation value for weather fact fade
-  const tabFadeAnim = useRef(new Animated.Value(1)).current; // Animation value for tab switching fade
+  // Animated values for prank result card and weather fact
+  const fadeAnim = useRef(new Animated.Value(0)).current; // For fade in/out
+  const slideAnim = useRef(new Animated.Value(50)).current; // For slide up
+  const scaleAnim = useRef(new Animated.Value(0.8)).current; // For zoom in
+  const factFadeAnim = useRef(new Animated.Value(1)).current; // For weather fact fade
 
-  // Refs for sound objects
-  const prankSoundRef = useRef(null);
-  const clickSoundRef = useRef(null);
+  // Ref for ViewShot (screenshot)
+  const viewShotRef = useRef();
 
-  // Array of roasting lines for the prank
-  const roastingLines = [
-    'Pro tip: Windows exist for a reason!',
-    "Thanos snapped... and the weather changed.",
-    "Weather app developers hate this one simple trick...",
-    "Save data and battery - just look outside!",
-    "Congratulations! You've just been bamboozled!",
-    "Modern problems require medieval solutions!",
-    "Breaking news: Outside still exists!",
-    "This is why your phone battery lasts longer than mine.",
-    "Weather forecasting technology since 100,000 BC.",
-    "I'm not lazy, I'm resource efficient!",
-    "5 out of 5 grandparents recommend this method.",
-    "Weather forecast accuracy: 100% guaranteed!",
-    "Your weather radar is called a window, try it sometime.",
-    "Why use satellites when you have eyeballs?",
-    "App usage time: 30 seconds. Time wasted: 30 seconds.",
-    "Weather forecasting, reinvented for the lazy generation!",
-    "Our advanced algorithm = looking out the window.",
-    "Spoiler alert: The weather is right there!",
-    "Downloading weather data the old-fashioned way - using your eyes.",
-    "The only weather app with zero server costs!",
-    "Congratulations on taking the longest route to check the weather!",
-    "Forecasting with 100% less technology, 100% more common sense.",
-    "Opening a window: Nature's weather API.",
-    "This app was sponsored by the Window Manufacturing Association.",
-    "Most revolutionary weather technology since the thermometer!",
-    "Even cavemen knew to just look outside.",
-    "We've secretly replaced their weather app with actual windows. Let's see if they notice!",
-    "Warning: Prolonged usage may result in self-awareness.",
-    "The most environmentally friendly weather app - uses zero electricity!",
-    "When technology fails, windows prevail.",
-    "Meteorologists HATE this one simple trick!",
-    "This app is 80% sarcasm, 20% weather.",
-    "Powered by a team of highly trained hamsters.",
-    "Accuracy not guaranteed. Sanity not guaranteed.",
-    "We predict the weather with the accuracy of a broken clock... twice a day!",
-    "I am Iron Man... I mean, Weather Man.",
-    "This app is my weapon... my *weather* weapon.",
-  ];
+  // Load user preferences (dark mode) and weather facts on mount
+  useEffect(() => {
+    loadSettings();
+    rotateSubtitle();
+    setRandomWeatherFact();
+  }, []);
 
-  // Array of loading messages displayed during "API call"
-  const loadingMessages = [
-    "Analyzing cloud patterns...",
-    "Connecting to weather satellites...",
-    "Fetching meteorological data...",
-    "Calculating precipitation probability...",
-    "Scanning atmospheric conditions...",
-    "Interrogating weather fairies...",
-    "Bribing the weather gods...",
-    "Converting weather data to emojis...",
-    "Performing advanced weather magic...",
-    "Consulting with meteorologists...",
-    "Downloading weather from the Cloud...",
-    "Calibrating the flux capacitor...",
-    "Summoning weather spirits...",
-    "Consulting the magic 8-ball...",
-    "Asking Jarvis for the forecast...",
-    "Harnessing the power of the Tesseract...",
-    "Consulting the Ancient One...",
-    "Checking with Nick Fury...",
-  ];
+  // Set up interval for rotating subtitles
+  useEffect(() => {
+    const subtitleInterval = setInterval(rotateSubtitle, 7000);
+    return () => clearInterval(subtitleInterval); // Clear interval on unmount
+  }, []);
 
-  // Array of weather facts
-  const weatherFacts = [
-    "🌧️ A single thunderstorm can use more energy than an atomic bomb!",
-    "❄️ No two snowflakes are exactly alike, but they all have six sides.",
-    "🌪️ The fastest recorded wind speed on Earth was 253 mph during a tropical cyclone in Australia.",
-    "🔥 The highest temperature ever recorded on Earth was 134°F (56.7°C) in Death Valley, California.",
-    "🧊 The coldest temperature ever recorded was -128.6°F (-89.2°C) in Antarctica.",
-    "⚡ Lightning strikes Earth about 8.6 million times per day!",
-    "☂️ The wettest place on Earth is Mawsynram, India, with an average of 467 inches of rain per year.",
-    "🌈 Rainbows are actually full circles, but we usually only see half from the ground.",
-    "🌞 It takes sunlight about 8 minutes to reach Earth.",
-    "☔ The fastest raindrop can fall at speeds of 18 mph!",
-    "🌩️ Thunder is the sound of lightning rapidly heating the air around it.",
-    "☁️ A typical cloud weighs about 1.1 million pounds!",
-    "🌡️ The air temperature decreases about 5.4°F for every 1,000 feet you go up in elevation.",
-    "❄️ About 1 million billion snowflakes fall each second across the Earth during a snowstorm.",
-    "🧠 Humans are surprisingly good weather predictors - about 70% accurate just by looking at the sky!",
-    "🍌 Bananas are berries, but strawberries aren't.  (Not weather-related, but interesting!)",
-    "🦆 Ducks can sleep with one eye open. (Also not weather, but still cool!)",
-    "The weather is often stranger than anything we could imagine.  (Just like the multiverse!)",
-    "Some people can literally 'smell' rain coming. (Like a superpower!)",
-  ];
+  // Update theme colors based on dark mode state
+  const themeColors = darkMode ? darkTheme : lightTheme;
 
-  const [currentLoadingMsg, setCurrentLoadingMsg] = useState(loadingMessages[0]); // Current loading message
-  const loadingMsgInterval = useRef(null); // Ref for loading message interval
-
-  // Generates fake weather data for a given location
-  const generateFakeWeather = (locationName) => {
-    const conditions = ['Sunny', 'Partly Cloudy', 'Cloudy', 'Rainy', 'Thunderstorms', 'Windy', 'Clear', 'Foggy', 'Snowy', 'Apocalyptic', 'Bifrost', 'Quantum Realm'];
-    const temps = Math.floor(Math.random() * 40) + -5; // Random temperature
-    const humidity = Math.floor(Math.random() * 100); // Random humidity
-    const windSpeed = Math.floor(Math.random() * 60); // Random wind speed
-    const extraInfo = [
-      '',
-      'Expect strong winds and mild disappointment.',
-      'Possible chance of meatballs.',
-      'Bring an umbrella, or don\'t. We\'re not the boss of you.',
-      'Weather conditions may vary wildly.  Good luck.',
-      'Consider staying indoors and questioning your life choices.',
-      'You might want to build an ark.',
-      'The end is nigh.  (Weather-wise)',
-      'Please consult a higher power for accurate forecast.',
-      'Warning: This forecast may be completely fabricated.',
-      'Watch out for falling debris.',
-      'May cause temporary loss of sanity.',
-      'You have my word, the weather will be... interesting.',
-      'Brace for impact!',
-      "It's about to get weird.",
-    ];
-
-    return {
-      location: locationName,
-      temperature: temps,
-      condition: conditions[Math.floor(Math.random() * conditions.length)],
-      humidity,
-      windSpeed,
-      high: temps + Math.floor(Math.random() * 10),
-      low: temps - Math.floor(Math.random() * 12),
-      extra: extraInfo[Math.floor(Math.random() * extraInfo.length)],
-    };
+  // Function to toggle dark mode and save preference
+  const toggleDarkMode = async () => {
+    const newDarkMode = !darkMode;
+    setDarkMode(newDarkMode);
+    await AsyncStorage.setItem('darkMode', JSON.stringify(newDarkMode));
   };
 
-  // Special messages for specific locations
-  const specialLocations = {
-    'north pole': "It's cold. Really cold. Genius!",
-    hawaii: "It's a tropical paradise, what did you expect?",
-    sahara: 'Hot. Sand. More sand. What else do you need to know?',
-    atlantis: '100% chance of being underwater. Forever.',
-    'your room': 'Maybe clean it first, then check the weather?',
-    mars: 'No atmosphere, extreme cold, dust storms. Not great for picnics.',
-    narnia: 'Always winter, never Christmas. Unless Aslan says otherwise.',
-    mordor: 'One does not simply check the weather in Mordor.',
-    hogwarts: 'Enchanted ceiling in the Great Hall. No app needed.',
-    gotham: 'Dark and brooding, with a chance of Batman.',
-    wakanda: 'Weather technology centuries ahead of this app.',
-    westeros: "Winter is coming. Or it's here already. Or it's summer. We're not sure.",
-    'bikini bottom': "It's already underwater, what more do you want to know?",
-    'springfield': "Expect yellow skies and a general sense of unease.",
-    'sunnydale': "High chance of vampires.  And rain.",
-    'mount doom': "Volcanic activity.  Bring a fire extinguisher.",
-    'the shire': "Pleasant weather for hobbits.  Slight chance of orcs.",
-    'neverland': "Weather is whatever you believe it to be.",
-    'asgard': "Prepare for thunder, lightning, and the occasional rainbow bridge.",
-    'titan': "Dusty.  Very dusty.  And possibly crowded.",
-    'xandar': "Beautiful skies, but watch out for Ronan.",
-    'knowhere': "Expect the unexpected.  And maybe some weird creatures.",
-  };
-
-  // Gets a random roasting line, avoiding immediate repetition
-  const getRandomRoast = () => {
-    const availableRoasts = roastingLines.filter(r => !usedRoasts.includes(r));
-    if (availableRoasts.length === 0) { // If all roasts used, reset
-      setUsedRoasts([]);
-      return roastingLines[Math.floor(Math.random() * roastingLines.length)];
+  // Function to load user settings (dark mode)
+  const loadSettings = async () => {
+    try {
+      const storedDarkMode = await AsyncStorage.getItem('darkMode');
+      if (storedDarkMode !== null) {
+        setDarkMode(JSON.parse(storedDarkMode));
+      }
+    } catch (error) {
+      console.error('Failed to load dark mode setting:', error);
     }
-    const roast = availableRoasts[Math.floor(Math.random() * availableRoasts.length)];
-    setUsedRoasts(prev => [...prev, roast]);
-    return roast;
   };
 
-  // Gets a random weather fact
-  const getRandomWeatherFact = () => weatherFacts[Math.floor(Math.random() * weatherFacts.length)];
+  // Function to rotate subtitles
+  const rotateSubtitle = () => {
+    setCurrentSubtitleIndex((prevIndex) => (prevIndex + 1) % SUBTITLES.length);
+  };
 
-  // Runs the fade-in, slide-up, and scale animations for the result card
-  const runFadeInAnimation = () => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
-      Animated.timing(slideAnim, { toValue: 0, duration: 800, useNativeDriver: true }),
-      Animated.timing(scaleAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
+  // Function to set a random weather fact
+  const setRandomWeatherFact = () => {
+    const randomIndex = Math.floor(Math.random() * WEATHER_FACTS.length);
+    setWeatherFact(WEATHER_FACTS[randomIndex]);
+    Animated.sequence([
+      Animated.timing(factFadeAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
+      Animated.timing(factFadeAnim, { toValue: 1, duration: 300, useNativeDriver: true }),
     ]).start();
   };
 
-  // Animates the logo rotation
-  const spinLogo = () => {
-    rotateLogo.setValue(0);
-    Animated.timing(rotateLogo, { toValue: 2, duration: 2000, useNativeDriver: true }).start();
-  };
-
-  // Effect for cycling through subtitles
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentSubtitleIndex(i => (i + 1) % subtitles.length);
-    }, 4000);
-    return () => clearInterval(interval);
-  }, [subtitles.length]); // Added subtitles.length to dependencies
-
-  // Effect for loading sounds and cycling weather facts
-  useEffect(() => {
-    async function loadSounds() {
-      try {
-        const { sound: prankSound } = await Audio.Sound.createAsync(require('./assets/prank-sound.wav'));
-        prankSoundRef.current = prankSound;
-        const { sound: clickSound } = await Audio.Sound.createAsync(require('./assets/click.mp3'));
-        clickSoundRef.current = clickSound;
-      } catch (e) {
-        console.log('Error loading sounds', e);
-      }
-    }
-    loadSounds();
-
-    setWeatherFact(getRandomWeatherFact()); // Set initial fact
-    const factInterval = setInterval(() => {
-      Animated.sequence([
-        Animated.timing(factFadeAnim, { toValue: 0, duration: 500, useNativeDriver: true }),
-        Animated.timing(factFadeAnim, { toValue: 1, duration: 500, useNativeDriver: true }),
-      ]).start(() => setWeatherFact(getRandomWeatherFact()));
-    }, 8000);
-
-    return () => { // Cleanup function
-      prankSoundRef.current?.unloadAsync();
-      clickSoundRef.current?.unloadAsync();
-      clearInterval(factInterval);
-      if (loadingMsgInterval.current) { // Clear loading message interval on unmount
-        clearInterval(loadingMsgInterval.current);
-      }
-    };
-  }, []); // Empty dependency array means this runs once on mount
-
-  // Effect for loading data from AsyncStorage
-  useEffect(() => {
-    async function loadStorage() {
-      try {
-        const count = await AsyncStorage.getItem('prankCount');
-        if (count !== null) setPrankCount(parseInt(count));
-        const savedRoasts = await AsyncStorage.getItem('usedRoasts');
-        if (savedRoasts) setUsedRoasts(JSON.parse(savedRoasts));
-        const savedDark = await AsyncStorage.getItem('darkMode');
-        if (savedDark) setDarkMode(JSON.parse(savedDark));
-      } catch (e) {
-        console.log('Error loading saved data', e);
-      }
-    }
-    loadStorage();
-  }, []);
-
-  // Effect for saving used roasts to AsyncStorage
-  useEffect(() => {
-    if (usedRoasts.length > 0) {
-      AsyncStorage.setItem('usedRoasts', JSON.stringify(usedRoasts)).catch(console.error);
-    }
-  }, [usedRoasts]);
-
-  // Effect for saving dark mode state to AsyncStorage
-  useEffect(() => {
-    AsyncStorage.setItem('darkMode', JSON.stringify(darkMode)).catch(console.error);
-  }, [darkMode]);
-
-  // Plays the click sound
+  // Sound effects
   const playClickSound = async () => {
-    try { await clickSoundRef.current?.replayAsync(); } catch { /* ignore errors */ }
-  };
-
-  // Plays the prank sound
-  const playPrankSound = async () => {
-    try { await prankSoundRef.current?.replayAsync(); } catch { /* ignore errors */ }
-  };
-
-  // Captures a screenshot of the result card and shares it
-  const captureAndShareScreenshot = async () => {
     try {
-      playClickSound();
-      if (!viewShotRef.current) return;
-      const uri = await viewShotRef.current.capture();
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(uri, { mimeType: 'image/png', dialogTitle: 'Share this weather prank!', UTI: 'public.png' });
-      } else {
-        Alert.alert('Error', 'Sharing is not supported on this device');
-      }
-    } catch (e) {
-      Alert.alert('Error', 'Failed to share screenshot');
-    }
-  };
-
-  // Toggles dark mode
-  const toggleDarkMode = () => {
-    playClickSound();
-    setDarkMode(d => !d);
-  };
-
-  // Shares the prank message
-  const onShare = async () => {
-    try {
-      playClickSound();
-      await Share.share({
-        message: `Get pranked by SkyC⚡st! I just got bamboozled checking the weather for ${result?.location || location || ''}! Try it!`,
+      const { sound } = await Audio.Sound.createAsync(
+        require('./assets/click-sound.mp3')
+      );
+      await sound.playAsync();
+      sound.setOnPlaybackStatusUpdate(status => {
+        if (status.didJustFinish) {
+          sound.unloadAsync();
+        }
       });
-    } catch {
-      Alert.alert('Error', 'Unable to share');
+    } catch (error) {
+      console.error('Error playing click sound:', error);
     }
   };
 
-  // Handles the weather search logic
-  const handleSearch = () => {
+  const playResultSound = async (condition) => {
+    try {
+      let soundFile;
+      if (condition && condition.includes('Bifrost')) {
+        soundFile = require('./assets/bifrost-sound.mp3');
+      } else if (condition && condition.includes('Quantum')) {
+        soundFile = require('./assets/quantum-sound.mp3');
+      } else if (condition && condition.includes('Thunder')) {
+        soundFile = require('./assets/thunder-sound.mp3');
+      } else {
+        soundFile = require('./assets/result-sound.mp3');
+      }
+      const { sound } = await Audio.Sound.createAsync(soundFile);
+      await sound.playAsync();
+      sound.setOnPlaybackStatusUpdate(status => {
+        if (status.didJustFinish) {
+          sound.unloadAsync();
+        }
+      });
+    } catch (error) {
+      console.error('Error playing result sound:', error);
+    }
+  };
+
+  // Random loading messages
+  const loadingMessages = [
+    "Consulting the cosmic currents...",
+    "Rerouting atmospheric anomalies...",
+    "Brewing a fresh batch of meteorological madness...",
+    "Asking the squirrels about their nuts...",
+    "Summoning the weather gnomes...",
+    "Calibrating the prank-o-meter...",
+    "Generating a forecast as reliable as your ex...",
+    "Polishing the crystal ball...",
+    "Hoping for a funny outcome...",
+    "Verifying the prank's comedic integrity...",
+  ];
+
+  const rotateLoadingMessage = () => {
+    const randomIndex = Math.floor(Math.random() * loadingMessages.length);
+    setCurrentLoadingMsg(loadingMessages[randomIndex]);
+  };
+
+  // Main search/prank logic
+  const handleSearch = async () => {
     if (!location.trim()) {
-      Alert.alert('Error', 'Please enter a location');
+      playClickSound();
+      Alert.alert('Location Required', 'Please enter a location to get your highly scientific forecast.');
       return;
     }
+
     playClickSound();
-    fadeAnim.setValue(0); slideAnim.setValue(50); scaleAnim.setValue(0.8); // Reset animations
-    setResult(null); // Clear previous result
-    setFakeData(null); // Clear previous fake data
-    setLoading(true); // Show loading indicator
+    Keyboard.dismiss();
+    setLoading(true);
+    setResult(null);
+    setFakeData(null);
+    setShowRealWeather(false); // Hide the real weather button until a prank is delivered
+    setRandomWeatherFact(); // Set a new weather fact on each search
 
-    let msgIndex = 0;
-    if (loadingMsgInterval.current) { // Clear any existing interval
-      clearInterval(loadingMsgInterval.current);
-    }
-    setCurrentLoadingMsg(loadingMessages[msgIndex]); // Set initial loading message
-    loadingMsgInterval.current = setInterval(() => { // Start cycling loading messages
-      msgIndex = (msgIndex + 1) % loadingMessages.length;
-      setCurrentLoadingMsg(loadingMessages[msgIndex]);
-    }, 1500);
+    const loadingInterval = setInterval(rotateLoadingMessage, 2000); // Rotate loading messages every 2 seconds
 
-    const weatherData = generateFakeWeather(location); // Generate fake weather
-
-    // Simulate API call delay (4 seconds)
-    setTimeout(() => {
-      clearInterval(loadingMsgInterval.current); // Stop loading messages
-      loadingMsgInterval.current = null; // Clear interval ref
-      setFakeData(weatherData); // Show fake weather data
-      setLoading(false); // <<<<----- KEY CHANGE: Hide loading indicator to show fakeData
-
-      // Simulate time to view fake data (2 seconds)
-      setTimeout(() => {
-        setFakeData(null); // Clear fake data
-        let message = `Weather forecast for ${location}: Go check outside!`;
-        // Check for special location messages
-        for (const [key, val] of Object.entries(specialLocations)) {
-          if (location.toLowerCase().includes(key)) {
-            message = `Weather forecast for ${location}: ${val}`;
-            break;
-          }
-        }
-        setResult({ location, message, roast: getRandomRoast() }); // Set final prank result
-        runFadeInAnimation(); // Trigger result card animation
-        spinLogo(); // Spin the logo
-        // Provide haptic feedback
-        if (Platform.OS === 'ios') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        else Vibration.vibrate(300);
-        playPrankSound(); // Play prank sound
-        updatePrankCount(); // Update prank counter
-      }, 2000);
-    }, 4000);
-  };
-
-  // Updates the prank count in state and AsyncStorage
-  const updatePrankCount = async () => {
     try {
-      const newCount = prankCount + 1;
-      await AsyncStorage.setItem('prankCount', newCount.toString());
-      setPrankCount(newCount);
-      if (newCount >= 1) setShowRealWeather(true); // Show "real weather" button after first prank
-    } catch {
-      console.log('Failed to update prank count');
+      // Simulate API call delay
+      await new Promise(resolve => setTimeout(resolve, 3000));
+
+      const lowerCaseLocation = location.toLowerCase();
+
+      // Trigger specific pranks based on keywords
+      let prankResult = null;
+      let isFakeData = false;
+
+      if (lowerCaseLocation.includes('north pole') || lowerCaseLocation.includes('siberia')) {
+        prankResult = {
+          location: location,
+          message: "Warning: Extremely high probability of frostbite and existential dread.",
+          roast: "You're probably just trying to escape your responsibilities, aren't you?",
+        };
+      } else if (lowerCaseLocation.includes('desert') || lowerCaseLocation.includes('sahara')) {
+        prankResult = {
+          location: location,
+          message: "Expect weather hotter than your last hot take.",
+          roast: "Hope you packed enough water. And maybe a camel.",
+        };
+      } else if (lowerCaseLocation.includes('chernobyl') || lowerCaseLocation.includes('fukushima')) {
+        prankResult = {
+          location: location,
+          message: "Forecast: A glowing chance of mutation and existential anxiety.",
+          roast: "Are you sure you want to visit? Your hair might get an unexpected glow-up.",
+        };
+      } else if (lowerCaseLocation.includes('atlantic triangle') || lowerCaseLocation.includes('bermuda')) {
+        prankResult = {
+          location: location,
+          message: "Forecast: Unpredictable disappearances and possible alien encounters.",
+          roast: "Your plane might get a free upgrade to an interstellar cruise.",
+        };
+      } else if (lowerCaseLocation.includes('mount doom') || lowerCaseLocation.includes('mordor')) {
+        prankResult = {
+          location: location,
+          message: "Expect fiery skies, volcanic ash, and an oppressive sense of evil.",
+          roast: "One does not simply walk into the weather forecast of Mordor.",
+        };
+      } else if (lowerCaseLocation.includes('asgard')) {
+        isFakeData = true;
+        prankResult = {
+          location: location,
+          temperature: '∞',
+          condition: 'Bifrost Bridge Activity',
+          humidity: 'N/A',
+          windSpeed: 'Gale',
+          high: '∞',
+          low: '∞',
+          extra: 'Occasional Rainbow Bridge transport.',
+        };
+      } else if (lowerCaseLocation.includes('quantum realm') || lowerCaseLocation.includes('multiverse')) {
+        isFakeData = true;
+        prankResult = {
+          location: location,
+          temperature: 'Fluctuating',
+          condition: 'Quantum Instability',
+          humidity: 'Variable',
+          windSpeed: 'Temporal Gusts',
+          high: 'Unknowable',
+          low: 'Unknowable',
+          extra: 'Warning: May cause spontaneous existence changes.',
+        };
+      }
+      else {
+        // Default random prank
+        const randomPranks = [
+          { message: "Forecast: 90% chance of you still being awesome. 10% chance of rain.", roast: "Don't let the weather dampen your sparkle, you magnificent human." },
+          { message: "Outlook: Slightly cloudy with a high probability of sarcasm.", roast: "Prepare for a day as unpredictable as your Wi-Fi signal." },
+          { message: "Weather Alert: Expect a shower of compliments. (Not from us, though).", roast: "You're doing great, sweetie. The weather, however, is just 'meh'." },
+          { message: "Today's forecast: Mostly awkward silences, followed by a slight breeze of indifference.", roast: "Sounds like your last family gathering, right?" },
+          { message: "It's gonna be a 'stay in bed and question all your life choices' kind of day.", roast: "Perfect for binge-watching that show you regret starting." },
+          { message: "The weather is as confused as you are about your career path.", roast: "At least one of you will figure it out eventually." },
+          { message: "Expect a high chance of 'why am I even here?' moments.", roast: "Don't worry, it's not just you. It's the atmosphere." },
+          { message: "Prediction: You'll still procrastinate, regardless of the sunshine.", roast: "The weather is not your excuse anymore." },
+          { message: "Forecast: Unbearably pleasant. You're welcome.", roast: "We aim to disappoint your expectations of meteorological drama." },
+          { message: "The weather is currently practicing its 'I don't care' face.", roast: "Much like your teenager when you ask them to do chores." },
+          { message: "Today's vibe: Overcast with a chance of forgetting your umbrella.", roast: "Some things never change, do they?" },
+          { message: "Looks like a perfect day for making bad decisions.", roast: "The sky approves. Probably." },
+          { message: "The weather is throwing shade. Literally.", roast: "It's not personal. It's just the clouds." },
+          { message: "Don't bother checking the forecast, it's just going to be 'weather.'", roast: "Mind-blowing, isn't it?" },
+          { message: "Warning: May experience an overwhelming urge to nap.", roast: "The weather is enabling your laziness." },
+          { message: "The sky is feeling dramatic today. Bring popcorn.", roast: "It's like a reality TV show, but with more clouds." },
+          { message: "Prepare for a day where you'll accidentally leave your keys inside.", roast: "The weather is just testing your memory." },
+          { message: "Forecast: A strong possibility of impulse purchases.", roast: "The weather told me to buy it. Honest." },
+          { message: "Today's temperature: Hot enough to fry an egg on the sidewalk, if you're into that.", roast: "Or just enjoy a nice, cooked breakfast inside." },
+          { message: "Outlook: A sprinkle of chaos with a chance of unexpected laughter.", roast: "Sounds like your average Tuesday." },
+        ];
+        const randomPrank = randomPranks[Math.floor(Math.random() * randomPranks.length)];
+        prankResult = { location: location, ...randomPrank };
+      }
+
+      if (isFakeData) {
+        setFakeData(prankResult);
+      } else {
+        setResult(prankResult);
+      }
+      setShowRealWeather(true); // Show real weather button after prank
+    } catch (error) {
+      console.error('Error fetching weather:', error);
+      Alert.alert('Error', 'Failed to fetch forecast. The weather gods are busy.');
+    } finally {
+      setLoading(false);
+      clearInterval(loadingInterval); // Stop loading message rotation
     }
   };
 
-  // Interpolated value for logo rotation animation
-  const spin = rotateLogo.interpolate({
-    inputRange: [0, 1, 2],
-    outputRange: ['0deg', '360deg', '0deg'],
-  });
-
-  // Gets theme colors based on dark mode state
-  const getThemeColors = () => {
-    if (darkMode) return {
-      gradientColors: ['#1a237e', '#121858', '#0a0e33'],
-      cardBg: 'rgba(30, 30, 50, 0.5)',
-      text: '#fff',
-      subText: '#e0e0e0',
-      inputBg: 'rgba(60, 60, 80, 0.5)',
-      buttonBg: '#bb4444', // Darker red for dark mode
-      accentColor: '#ffcc00',
-      factBg: 'rgba(30, 30, 50, 0.6)',
-      tabActive: '#bb4444',
-      tabInactive: '#555',
-      inputBorder: 'rgba(100, 100, 120, 0.7)',
-    };
-    return {
-      gradientColors: ['#4c669f', '#3b5998', '#192f6a'],
-      cardBg: 'rgba(255, 255, 255, 0.15)',
-      text: '#fff',
-      subText: '#e0e0e0',
-      inputBg: 'rgba(255, 255, 255, 0.2)',
-      buttonBg: '#ff6b6b', // Original red for light mode
-      accentColor: '#ffcc00',
-      factBg: 'rgba(0, 0, 0, 0.2)',
-      tabActive: '#ff6b6b',
-      tabInactive: '#aaa',
-      inputBorder: 'rgba(255,255,255,0.3)',
-    };
+  // Share functionality
+  const onShare = async () => {
+    playClickSound();
+    if (result) {
+      try {
+        const shareMessage = `SkyC⚡st says for ${result.location}: "${result.message}" ${result.roast} #SkyCastPrank #WeatherPrank`;
+        await Share.share({
+          message: shareMessage,
+        });
+      } catch (error) {
+        console.error('Error sharing:', error.message);
+        Alert.alert('Share Failed', 'Could not share the prank. Try again!');
+      }
+    }
   };
 
-  const themeColors = getThemeColors(); // Get current theme colors
+  const captureAndShareScreenshot = async () => {
+    playClickSound();
+    try {
+      const uri = await viewShotRef.current.capture();
+      if (uri) {
+        await Sharing.shareAsync(uri);
+      }
+    } catch (error) {
+      console.error('Error capturing or sharing screenshot:', error);
+      Alert.alert('Screenshot Failed', 'Could not capture or share screenshot.');
+    }
+  };
 
-  // Switches between Weather Mischief and Feedback tabs
-  function switchTab(tabName) {
-    if (tabName === activeTab) return; // Do nothing if already on the tab
-    // Animate out the current tab content
-    Animated.timing(tabFadeAnim, { toValue: 0, duration: 250, useNativeDriver: true }).start(() => {
-      setActiveTab(tabName); // Switch tab
-      setFeedbackSuccess(false); // Reset feedback success message
-      setFeedbackText(''); // Clear feedback text
-      setFeedbackUserName(''); // Clear feedback user name
-      // Animate in the new tab content
-      Animated.timing(tabFadeAnim, { toValue: 1, duration: 250, useNativeDriver: true }).start();
+  // Animation effect for prank result card
+  useEffect(() => {
+    if (result || fakeData) {
+      playResultSound(result ? result.message : fakeData.condition);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+      // Reset initial values for animations
+      fadeAnim.setValue(0);
+      slideAnim.setValue(50);
+      scaleAnim.setValue(0.8);
+
+      // Start animations
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 500,
+          useNativeDriver: true,
+        }),
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 500,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.spring(scaleAnim, {
+          toValue: 1,
+          friction: 5,
+          tension: 40,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      // When result/fakeData are cleared (e.g., new search), reset animations
+      fadeAnim.setValue(0);
+      slideAnim.setValue(50);
+      scaleAnim.setValue(0.8);
+    }
+  }, [result, fakeData]);
+
+  // Animation for tab switching
+  const tabFadeAnim = useRef(new Animated.Value(1)).current; // Initial opacity for current tab
+
+  const switchTab = (tabName) => {
+    if (activeTab === tabName) return;
+
+    Animated.timing(tabFadeAnim, {
+      toValue: 0,
+      duration: 150, // Fast fade out
+      useNativeDriver: true,
+    }).start(() => {
+      setActiveTab(tabName);
+      Animated.timing(tabFadeAnim, {
+        toValue: 1,
+        duration: 250, // Slower fade in
+        useNativeDriver: true,
+      }).start();
     });
-  }
+  };
 
   // Main render function
   return (
@@ -508,10 +456,19 @@ export default function App() {
           </TouchableOpacity>
         </View>
 
-        <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.mainContent}>
+        {/* Scrollable Content Area */}
+        <ScrollView
+          style={styles.scrollViewFlex} // ADDED: Give ScrollView flex: 1
+          contentContainerStyle={styles.scrollContainer}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* KeyboardAvoidingView for input fields */}
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.keyboardAvoidingViewContent}
+          >
+            {/* Animated.View for tab content fade */}
             <Animated.View style={{ flex: 1, width: '100%', opacity: tabFadeAnim }}>
-              {/* Conditional rendering based on active tab */}
               {activeTab === 'skycast_now' ? (
                 <>
                   {/* Header Section */}
@@ -535,7 +492,7 @@ export default function App() {
                     </Animated.View>
                     <Text style={[styles.title, { color: themeColors.text }]}>SkyC⚡st</Text>
                     <Text style={[styles.subtitle, { color: themeColors.subText }]}>
-                      {subtitles[currentSubtitleIndex]}
+                      {SUBTITLES[currentSubtitleIndex]}
                     </Text>
                   </View>
 
@@ -549,13 +506,13 @@ export default function App() {
                       onChangeText={setLocation}
                       onSubmitEditing={handleSearch}
                       returnKeyType="search"
-                      editable={!loading && !fakeData && !result} // More precise editability
+                      editable={!loading}
                     />
                     <TouchableOpacity
                       style={[styles.searchButton, { backgroundColor: themeColors.buttonBg }]}
                       onPress={handleSearch}
                       activeOpacity={0.7}
-                      disabled={loading || fakeData !== null} // Disable while loading or showing fake data
+                      disabled={loading}
                     >
                       <Text style={styles.searchButtonText}>Get Forecast</Text>
                     </TouchableOpacity>
@@ -574,82 +531,84 @@ export default function App() {
                     )}
                   </View>
 
-                  {/* Conditional rendering for loading, fake data, or result */}
-                  {loading ? (
-                    <View style={styles.loadingContainer}>
-                      <Image source={require('./assets/loading-weather.gif')} style={styles.loadingImage} />
-                      <Text style={[styles.loadingText, { color: themeColors.text }]}>{currentLoadingMsg}</Text>
-                    </View>
-                  ) : fakeData ? (
-                    <View style={styles.fakeDataContainer}>
-                      <View style={[styles.weatherCard, { backgroundColor: themeColors.cardBg }]}>
-                        <Text style={[styles.locationText, { color: themeColors.text }]}>{fakeData.location}</Text>
-                        <View style={styles.mainWeatherRow}>
-                          <Image
-                            source={
-                              fakeData.condition.includes('Rain')
-                                ? require('./assets/rain-icon.png')
-                                : fakeData.condition.includes('Cloud')
-                                  ? require('./assets/cloudy-icon.png')
-                                  : fakeData.condition.includes('Sun')
-                                    ? require('./assets/sun-icon.png')
-                                    : fakeData.condition.includes('Snow')
-                                      ? require('./assets/snow-icon.png')
-                                      : fakeData.condition.includes('Thunder')
-                                        ? require('./assets/thunder-icon.png')
-                                        : fakeData.condition.includes('Bifrost')
-                                          ? require('./assets/bifrost-icon.png')
-                                          : fakeData.condition.includes('Quantum')
-                                            ? require('./assets/quantum-icon.png')
-                                            : require('./assets/wind-icon.png')
-                            }
-                            style={styles.weatherIcon}
-                          />
-                          <View>
-                            <Text style={[styles.tempText, { color: themeColors.text }]}>{fakeData.temperature}°C</Text>
-                            <Text style={[styles.conditionText, { color: themeColors.subText }]}>{fakeData.condition}</Text>
+                  {/* New wrapper for dynamic content to stabilize layout */}
+                  <View style={styles.dynamicContentWrapper}>
+                    {loading ? (
+                      <View style={styles.loadingContainer}>
+                        <Image source={require('./assets/loading-weather.gif')} style={styles.loadingImage} />
+                        <Text style={[styles.loadingText, { color: themeColors.text }]}>{currentLoadingMsg}</Text>
+                      </View>
+                    ) : fakeData ? (
+                      <View style={styles.fakeDataContainer}>
+                        <View style={[styles.weatherCard, { backgroundColor: themeColors.cardBg }]}>
+                          <Text style={[styles.locationText, { color: themeColors.text }]}>{fakeData.location}</Text>
+                          <View style={styles.mainWeatherRow}>
+                            <Image
+                              source={
+                                fakeData.condition?.includes('Rain')
+                                  ? require('./assets/rain-icon.png')
+                                  : fakeData.condition?.includes('Cloud')
+                                    ? require('./assets/cloudy-icon.png')
+                                    : fakeData.condition?.includes('Sun')
+                                      ? require('./assets/sun-icon.png')
+                                      : fakeData.condition?.includes('Snow')
+                                        ? require('./assets/snow-icon.png')
+                                        : fakeData.condition?.includes('Thunder')
+                                          ? require('./assets/thunder-icon.png')
+                                          : fakeData.condition?.includes('Bifrost')
+                                            ? require('./assets/bifrost-icon.png')
+                                            : fakeData.condition?.includes('Quantum')
+                                              ? require('./assets/quantum-icon.png')
+                                              : require('./assets/wind-icon.png')
+                              }
+                              style={styles.weatherIcon}
+                            />
+                            <View>
+                              <Text style={[styles.tempText, { color: themeColors.text }]}>{fakeData.temperature}°C</Text>
+                              <Text style={[styles.conditionText, { color: themeColors.subText }]}>{fakeData.condition}</Text>
+                            </View>
                           </View>
-                        </View>
-                        {fakeData.extra ? (
-                          <Text style={[styles.extraInfoText, { color: themeColors.accentColor }]}>{fakeData.extra}</Text>
-                        ) : null}
-                        <View style={styles.detailsRow}>
-                          <View style={styles.detailItem}>
-                            <Text style={[styles.detailLabel, { color: themeColors.subText }]}>HUMIDITY</Text>
-                            <Text style={[styles.detailValue, { color: themeColors.text }]}>{fakeData.humidity}%</Text>
-                          </View>
-                          <View style={styles.detailItem}>
-                            <Text style={[styles.detailLabel, { color: themeColors.subText }]}>WIND</Text>
-                            <Text style={[styles.detailValue, { color: themeColors.text }]}>{fakeData.windSpeed} km/h</Text>
-                          </View>
-                          <View style={styles.detailItem}>
-                            <Text style={[styles.detailLabel, { color: themeColors.subText }]}>HIGH/LOW</Text>
-                            <Text style={[styles.detailValue, { color: themeColors.text }]}>{fakeData.high}°/{fakeData.low}°</Text>
+                          {fakeData.extra ? (
+                            <Text style={[styles.extraInfoText, { color: themeColors.accentColor }]}>{fakeData.extra}</Text>
+                          ) : null}
+                          <View style={styles.detailsRow}>
+                            <View style={styles.detailItem}>
+                              <Text style={[styles.detailLabel, { color: themeColors.subText }]}>HUMIDITY</Text>
+                              <Text style={[styles.detailValue, { color: themeColors.text }]}>{fakeData.humidity}%</Text>
+                            </View>
+                            <View style={styles.detailItem}>
+                              <Text style={[styles.detailLabel, { color: themeColors.subText }]}>WIND</Text>
+                              <Text style={[styles.detailValue, { color: themeColors.text }]}>{fakeData.windSpeed} km/h</Text>
+                            </View>
+                            <View style={styles.detailItem}>
+                              <Text style={[styles.detailLabel, { color: themeColors.subText }]}>HIGH/LOW</Text>
+                              <Text style={[styles.detailValue, { color: themeColors.text }]}>{fakeData.high}°/{fakeData.low}°</Text>
+                            </View>
                           </View>
                         </View>
                       </View>
-                    </View>
-                  ) : result ? (
-                    <ViewShot ref={viewShotRef} options={{ format: 'png', quality: 0.9 }} style={styles.viewShotContainer}>
-                      <Animated.View style={[styles.resultContainer, { opacity: fadeAnim, transform: [{ translateY: slideAnim }, { scale: scaleAnim }] }]}>
-                        <View style={[styles.weatherCard, { backgroundColor: themeColors.cardBg }]}>
-                          <Text style={[styles.locationText, { color: themeColors.text }]}>{result.location}</Text>
-                          <Image source={require('./assets/laugh-emoji.png')} style={styles.weatherIcon} />
-                          <Text style={[styles.weatherMessage, { color: themeColors.text }]}>{result.message}</Text>
-                          <Text style={[styles.roastText, { color: themeColors.accentColor }]}>{result.roast}</Text>
-                          <Text style={[styles.nameSign, { color: themeColors.accentColor }]}>- Sk Ibrahim</Text>
-                          <View style={styles.shareButtonContainer}>
-                            <TouchableOpacity style={[styles.shareButton, { backgroundColor: themeColors.buttonBg }]} onPress={onShare} activeOpacity={0.7}>
-                              <Text style={styles.shareButtonText}>Share Prank</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity style={[styles.screenshotButton, { backgroundColor: themeColors.buttonBg }]} onPress={captureAndShareScreenshot} activeOpacity={0.7}>
-                              <Text style={styles.shareButtonText}>Share Screenshot</Text>
-                            </TouchableOpacity>
+                    ) : result ? (
+                      <ViewShot ref={viewShotRef} options={{ format: 'png', quality: 0.9 }} style={styles.viewShotContainer}>
+                        <Animated.View style={[styles.resultContainer, { opacity: fadeAnim, transform: [{ translateY: slideAnim }, { scale: scaleAnim }] }]}>
+                          <View style={[styles.weatherCard, { backgroundColor: themeColors.cardBg }]}>
+                            <Text style={[styles.locationText, { color: themeColors.text }]}>{result.location}</Text>
+                            <Image source={require('./assets/laugh-emoji.png')} style={styles.weatherIcon} />
+                            <Text style={[styles.weatherMessage, { color: themeColors.text }]}>{result.message}</Text>
+                            <Text style={[styles.roastText, { color: themeColors.accentColor }]}>{result.roast}</Text>
+                            <Text style={[styles.nameSign, { color: themeColors.accentColor }]}>- Sk Ibrahim</Text>
+                            <View style={styles.shareButtonContainer}>
+                              <TouchableOpacity style={[styles.shareButton, { backgroundColor: themeColors.buttonBg }]} onPress={onShare} activeOpacity={0.7}>
+                                <Text style={styles.shareButtonText}>Share Prank</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity style={[styles.screenshotButton, { backgroundColor: themeColors.buttonBg }]} onPress={captureAndShareScreenshot} activeOpacity={0.7}>
+                                <Text style={styles.shareButtonText}>Share Screenshot</Text>
+                              </TouchableOpacity>
+                            </View>
                           </View>
-                        </View>
-                      </Animated.View>
-                    </ViewShot>
-                  ) : null}
+                        </Animated.View>
+                      </ViewShot>
+                    ) : null}
+                  </View> {/* Closes dynamicContentWrapper */}
 
                   {/* Weather Fact Section */}
                   <Animated.View
@@ -661,7 +620,7 @@ export default function App() {
                 // Feedback Tab Content
                 <View style={styles.feedbackContainer}>
                   <Text style={[styles.feedbackTitle, { color: themeColors.text }]}>We value your feedback! (Not really)</Text>
-                  <Text style={[styles.feedbackDescription, { color: themeColors.subText }]}>Please let us know your thoughts or suggestions below.  Or don't.  It's a prank app.</Text>
+                  <Text style={[styles.feedbackDescription, { color: themeColors.subText }]}>Please let us know your thoughts or suggestions below. Or don't. It's a prank app.</Text>
                   <TextInput
                     style={[styles.feedbackInput, { backgroundColor: themeColors.inputBg, color: themeColors.text, borderColor: themeColors.inputBorder, height: 50, marginBottom: 10 }]}
                     placeholder="Your Name (Optional, if you want credit for your genius)"
@@ -686,27 +645,36 @@ export default function App() {
                     style={[styles.feedbackSubmitButton, { backgroundColor: feedbackText.trim() ? themeColors.buttonBg : '#888', opacity: feedbackLoading ? 0.7 : 1 }]}
                     onPress={async () => {
                       if (!feedbackText.trim()) {
-                        Alert.alert('Error', 'Please enter your feedback before submitting.  Or just close the app.');
+                        Alert.alert('Error', 'Please enter your feedback before submitting. Or just close the app.');
                         return;
                       }
                       setFeedbackLoading(true);
                       const feedbackData = {
-                        feedback_message: feedbackText.trim(), // This key should match your EmailJS template
-                        user_name: feedbackUserName.trim() || 'Anonymous SkyC⚡st User', // Add user name, default if empty
-                        submission_date: new Date().toLocaleString(), // This key should match your EmailJS template
+                        feedback_message: feedbackText.trim(),
+                        user_name: feedbackUserName.trim() || 'Anonymous SkyC⚡st User',
+                        submission_date: new Date().toLocaleString(),
                       };
-
                       try {
-                        // Send email via EmailJS
+                        // Send email via EmailJS using fetch
                         // IMPORTANT: Replace 'YOUR_EMAILJS_SERVICE_ID' with your actual Service ID from EmailJS
-                        await emailjs.send(
-                          'YOUR_EMAILJS_SERVICE_ID', // Replace with your Service ID
-                          'template_hddwqhm',        // Your Template ID
-                          feedbackData,
-                          'sGTlSc79GW0mB6ocv'         // Your User ID (Public Key)
-                        );
-                        console.log('Feedback email sent successfully via EmailJS!');
-
+                        const emailJsData = {
+                          service_id: 'YOUR_EMAILJS_SERVICE_ID', // <<<<----- REPLACE THIS WITH YOUR ACTUAL SERVICE ID
+                          template_id: 'template_hddwqhm',
+                          user_id: 'sGTlSc79GW0mB6ocv',
+                          template_params: feedbackData,
+                        };
+                        const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                          },
+                          body: JSON.stringify(emailJsData),
+                        });
+                        if (!response.ok) {
+                          const errorText = await response.text();
+                          throw new Error(`EmailJS Error ${response.status}: ${errorText}`);
+                        }
+                        console.log('Feedback email sent successfully via fetch to EmailJS!');
                         // Save to AsyncStorage (original functionality)
                         const existing = await AsyncStorage.getItem('userFeedbacks');
                         const arr = existing ? JSON.parse(existing) : [];
@@ -720,10 +688,12 @@ export default function App() {
                         if (Platform.OS === 'ios') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                         else Vibration.vibrate(200);
                       } catch (error) {
-                        console.error('Failed to send feedback email or save to storage:', error);
-                        // This is the original humorous error alert
-                        Alert.alert('Error', 'Failed to save feedback.  Try turning it off and on again.');
-                        setFeedbackSuccess(false); // Ensure success message isn't shown on error
+                        console.error('Full error object during feedback submission:', error);
+                        if (error.message && error.message.includes("EmailJS Error")) {
+                          console.error("Detailed EmailJS Error:", error.message);
+                        }
+                        Alert.alert('Error', 'Failed to save feedback. Try turning it off and on again.');
+                        setFeedbackSuccess(false);
                       } finally {
                         setFeedbackLoading(false);
                       }
@@ -733,7 +703,7 @@ export default function App() {
                     <Text style={styles.feedbackSubmitButtonText}>{feedbackLoading ? 'Submitting...' : 'Submit Feedback'}</Text>
                   </TouchableOpacity>
                   {feedbackSuccess && (
-                    <Text style={[styles.feedbackSuccessText, { color: themeColors.accentColor }]}>Thank you for your feedback! 🙌  (We're probably not going to read it)</Text>
+                    <Text style={[styles.feedbackSuccessText, { color: themeColors.accentColor }]}>Thank you for your feedback! 🙌 (We're probably not going to read it)</Text>
                   )}
                 </View>
               )}
@@ -750,67 +720,70 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  scrollView: { // Added style for the ScrollView
-    flex: 1,
-  },
   background: {
     flex: 1,
     width: '100%',
-    // height: '100%', // flex: 1 is usually sufficient here
+    height: '100%',
+  },
+  scrollViewFlex: { // Ensures ScrollView itself takes up all available vertical space
+    flex: 1,
   },
   scrollContainer: {
-    flexGrow: 1, // Ensures content can scroll if it overflows
-    paddingBottom: 30, // Padding at the bottom for scrollable content
+    flexGrow: 1, // Allows content to expand and push ScrollView down
+    paddingBottom: 30, // Adds padding at the bottom of the scrollable content
   },
-  mainContent: {
-    alignItems: 'center',
-    justifyContent: 'flex-start', // Align content to the top
+  keyboardAvoidingViewContent: {
+    flex: 1, // Allows KeyboardAvoidingView to take up available space
+    alignItems: 'center', // Centers content horizontally within this view
     padding: 20,
     width: '100%',
+  },
+  // NEW STYLE: Wrapper to stabilize dynamic content area
+  dynamicContentWrapper: {
+    width: '100%',
+    alignItems: 'center', // Centers content horizontally within this wrapper
+    minHeight: 450, // IMPORTANT: Adjust this value to be slightly larger than your tallest content card (e.g., the prank result card with share buttons) to prevent jumps.
+    // Removed justifyContent: 'center' to allow content to flow from top and enable scrolling if it exceeds minHeight.
   },
   tabBar: {
     flexDirection: 'row',
     justifyContent: 'center',
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight + 10 : 40, // Adjust for status bar
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight + 10 : 40,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(120,120,120,0.5)', // Themed border color might be better
+    borderBottomColor: 'rgba(120,120,120,0.5)',
     backgroundColor: 'transparent',
     width: '100%',
   },
   tabButton: {
     marginHorizontal: 20,
     paddingBottom: 10,
-    borderBottomWidth: 3, // Active tab indicator
+    borderBottomWidth: 3,
   },
   tabButtonText: {
-    fontSize: 16,
+    fontSize: 18,
   },
   header: {
     alignItems: 'center',
-    marginTop: 20,
     marginBottom: 20,
-    position: 'relative',
-    width: '100%',
+    marginTop: 20,
   },
   darkModeContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     position: 'absolute',
-    top: -15, // Adjusted for better placement
     right: 0,
+    top: 0,
+    padding: 10,
   },
   darkModeText: {
-    fontSize: 18,
     marginRight: 5,
-  },
-  darkModeSwitch: {
-    transform: [{ scale: 0.8 }],
+    fontSize: 18,
   },
   logo: {
-    width: 80,
-    height: 80,
+    width: 100,
+    height: 100,
     resizeMode: 'contain',
-    marginBottom: 10,
+    marginBottom: 5,
   },
   title: {
     fontSize: 32,
@@ -819,116 +792,118 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     fontSize: 16,
-    marginBottom: 20,
     fontStyle: 'italic',
-    textAlign: 'center',
-    paddingHorizontal: 10,
   },
   searchContainer: {
     width: '100%',
+    alignItems: 'center',
     marginBottom: 20,
+    paddingHorizontal: 10,
   },
   input: {
-    height: 50,
+    width: '100%',
+    padding: 15,
     borderRadius: 25,
-    paddingHorizontal: 20,
     fontSize: 16,
     marginBottom: 10,
-    borderWidth: 1, // Make border always visible
+    borderWidth: 1,
   },
   searchButton: {
-    height: 50,
+    width: '100%',
+    padding: 15,
     borderRadius: 25,
     alignItems: 'center',
-    justifyContent: 'center',
     marginBottom: 10,
   },
   searchButtonText: {
     color: 'white',
-    fontSize: 18,
     fontWeight: 'bold',
+    fontSize: 18,
   },
   realWeatherButton: {
-    height: 40,
-    borderRadius: 20,
+    width: '100%',
+    padding: 10,
+    borderRadius: 25,
     alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 5,
+    borderWidth: 1,
+    borderColor: '#ccc',
   },
   realWeatherButtonText: {
-    fontSize: 16,
+    fontSize: 14,
+    fontWeight: '500',
   },
   loadingContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 30,
-    padding: 20,
+    width: '100%',
+    // This view now benefits from the minHeight of dynamicContentWrapper
   },
   loadingImage: {
-    width: 100,
-    height: 100,
+    width: 120,
+    height: 120,
     resizeMode: 'contain',
-    marginBottom: 15,
   },
   loadingText: {
+    marginTop: 10,
     fontSize: 16,
     textAlign: 'center',
-  },
-  viewShotContainer: { // Used for capturing screenshot
-    width: '100%',
-    alignItems: 'center',
-  },
-  resultContainer: {
-    width: '100%',
-    alignItems: 'center',
-    marginTop: 20,
-  },
-  weatherCard: { // Styling for the card displaying weather/prank info
-    width: '100%',
-    maxWidth: 400, // Max width for better layout on larger screens
-    borderRadius: 20,
-    padding: 20,
-    alignItems: 'center',
-    // Adding some shadow for depth
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.23,
-    shadowRadius: 2.62,
-    elevation: 4, // Elevation for Android shadow
   },
   fakeDataContainer: {
     width: '100%',
     alignItems: 'center',
-    marginTop: 20,
+    // This view now benefits from the minHeight of dynamicContentWrapper
+  },
+  resultContainer: {
+    width: '100%',
+    alignItems: 'center',
+    // This view now benefits from the minHeight of dynamicContentWrapper
+  },
+  viewShotContainer: {
+    width: '100%',
+    alignItems: 'center',
+    // This view now benefits from the minHeight of dynamicContentWrapper
+  },
+  weatherCard: {
+    width: '95%',
+    maxWidth: 400,
+    padding: 20,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 8,
+    alignItems: 'center',
   },
   locationText: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: 'bold',
-    marginBottom: 15,
+    marginBottom: 10,
     textAlign: 'center',
   },
   mainWeatherRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     marginBottom: 15,
-    width: '100%',
   },
   weatherIcon: {
-    width: 100,
-    height: 100,
+    width: 80,
+    height: 80,
     resizeMode: 'contain',
     marginRight: 15,
   },
   tempText: {
-    fontSize: 42,
+    fontSize: 48,
     fontWeight: 'bold',
   },
   conditionText: {
-    fontSize: 20,
+    fontSize: 22,
+    marginTop: -5,
+  },
+  extraInfoText: {
+    fontSize: 16,
+    fontStyle: 'italic',
+    marginBottom: 15,
     textAlign: 'center',
   },
   detailsRow: {
@@ -939,52 +914,51 @@ const styles = StyleSheet.create({
   },
   detailItem: {
     alignItems: 'center',
-    flex: 1,
-    paddingHorizontal: 5,
   },
   detailLabel: {
     fontSize: 12,
+    fontWeight: 'bold',
     marginBottom: 5,
-    textAlign: 'center',
   },
   detailValue: {
     fontSize: 16,
-    fontWeight: 'bold',
-    textAlign: 'center',
   },
   weatherMessage: {
-    fontSize: 20,
-    textAlign: 'center',
-    marginVertical: 15,
+    fontSize: 24,
     fontWeight: 'bold',
+    textAlign: 'center',
+    marginVertical: 10,
   },
   roastText: {
-    fontSize: 16,
-    textAlign: 'center',
+    fontSize: 18,
     fontStyle: 'italic',
+    textAlign: 'center',
     marginBottom: 10,
   },
   nameSign: {
     fontSize: 14,
-    textAlign: 'center',
-    marginBottom: 20,
+    fontStyle: 'italic',
+    alignSelf: 'flex-end',
+    marginTop: 10,
+    marginRight: 10,
   },
   shareButtonContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    marginTop: 20,
     width: '100%',
-    marginTop: 10,
+    justifyContent: 'space-around',
+    paddingHorizontal: 10,
   },
   shareButton: {
-    paddingVertical: 12,
+    paddingVertical: 10,
     paddingHorizontal: 15,
     borderRadius: 25,
     flex: 1,
-    marginHorizontal: 5, // Ensures space between buttons
+    marginHorizontal: 5,
     alignItems: 'center',
   },
   screenshotButton: {
-    paddingVertical: 12,
+    paddingVertical: 10,
     paddingHorizontal: 15,
     borderRadius: 25,
     flex: 1,
@@ -1035,30 +1009,24 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginBottom: 15,
     borderWidth: 1,
-    textAlignVertical: 'top',
+    textAlignVertical: 'top', // For multiline TextInput
   },
   feedbackSubmitButton: {
-    height: 50,
     width: '100%',
+    padding: 15,
     borderRadius: 25,
     alignItems: 'center',
-    justifyContent: 'center',
+    marginTop: 10,
   },
   feedbackSubmitButtonText: {
     color: 'white',
-    fontSize: 18,
     fontWeight: 'bold',
+    fontSize: 18,
   },
   feedbackSuccessText: {
-    fontSize: 16,
     marginTop: 15,
+    fontSize: 16,
     textAlign: 'center',
-  },
-  extraInfoText: {
-    fontSize: 14,
     fontStyle: 'italic',
-    marginTop: 10,
-    textAlign: 'center',
-    paddingHorizontal: 5,
   },
 });
