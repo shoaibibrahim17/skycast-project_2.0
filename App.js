@@ -483,13 +483,13 @@ export default function App() {
                         ios_backgroundColor="#3e3e3e"
                         style={styles.darkModeSwitch}
                       />
-                    </View>
-                    <Animated.View style={{ transform: [{ rotate: spin }] }}>
+                    </View> 
+                    <View> {/* Changed from Animated.View, removed transform */}
                       <Image
                         source={darkMode ? require('./assets/logo-dark.png') : require('./assets/logo.png')}
                         style={styles.logo}
                       />
-                    </Animated.View>
+                    </View>
                     <Text style={[styles.title, { color: themeColors.text }]}>SkyC⚡st</Text>
                     <Text style={[styles.subtitle, { color: themeColors.subText }]}>
                       {SUBTITLES[currentSubtitleIndex]}
@@ -532,6 +532,8 @@ export default function App() {
                   </View>
 
                   {/* New wrapper for dynamic content to stabilize layout */}
+                  {/* Commenting out this entire block to check for bundling errors */}
+                  {/*
                   <View style={styles.dynamicContentWrapper}>
                     {loading ? (
                       <View style={styles.loadingContainer}>
@@ -597,9 +599,6 @@ export default function App() {
                             <Text style={[styles.roastText, { color: themeColors.accentColor }]}>{result.roast}</Text>
                             <Text style={[styles.nameSign, { color: themeColors.accentColor }]}>- Sk Ibrahim</Text>
                             <View style={styles.shareButtonContainer}>
-                              <TouchableOpacity style={[styles.shareButton, { backgroundColor: themeColors.buttonBg }]} onPress={onShare} activeOpacity={0.7}>
-                                <Text style={styles.shareButtonText}>Share Prank</Text>
-                              </TouchableOpacity>
                               <TouchableOpacity style={[styles.screenshotButton, { backgroundColor: themeColors.buttonBg }]} onPress={captureAndShareScreenshot} activeOpacity={0.7}>
                                 <Text style={styles.shareButtonText}>Share Screenshot</Text>
                               </TouchableOpacity>
@@ -608,7 +607,8 @@ export default function App() {
                         </Animated.View>
                       </ViewShot>
                     ) : null}
-                  </View> {/* Closes dynamicContentWrapper */}
+                  </View>
+                  */}
 
                   {/* Weather Fact Section */}
                   <Animated.View
