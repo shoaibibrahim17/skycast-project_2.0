@@ -174,19 +174,25 @@ export default function App() {
     }
   };
 
-  const playResultSound = async (condition) => {
+  const playResultSound = async (conditionString) => {
     try {
-      let soundFile;
-      if (condition && condition.includes('Bifrost')) {
-        soundFile = require('./assets/bifrost-sound.mp3');
-      } else if (condition && condition.includes('Quantum')) {
-        soundFile = require('./assets/quantum-sound.mp3');
-      } else if (condition && condition.includes('Thunder')) {
-        soundFile = require('./assets/thunder-sound.mp3');
-      } else {
-        soundFile = require('./assets/result-sound.mp3');
+      let soundAsset;
+      const safeCondition = typeof conditionString === 'string' ? conditionString : "";
+
+      console.log(`playResultSound called. Condition (now ignored for sound selection): ${safeCondition}`);
+
+      // Always play click-sound.mp3 for any result
+      console.log("Loading sound: click-sound.mp3 for result display.");
+      soundAsset = require('./assets/click-sound.mp3');
+
+      console.log("Sound asset to be played (module ID):", soundAsset);
+      
+      if (!soundAsset) {
+        console.error("No sound asset was loaded. Skipping playback.");
+        return;
       }
-      const { sound } = await Audio.Sound.createAsync(soundFile);
+
+      const { sound } = await Audio.Sound.createAsync(soundAsset);
       await sound.playAsync();
       sound.setOnPlaybackStatusUpdate(status => {
         if (status.didJustFinish) {
@@ -532,8 +538,6 @@ export default function App() {
                   </View>
 
                   {/* New wrapper for dynamic content to stabilize layout */}
-                  {/* Commenting out this entire block to check for bundling errors */}
-                  {/*
                   <View style={styles.dynamicContentWrapper}>
                     {loading ? (
                       <View style={styles.loadingContainer}>
@@ -608,7 +612,6 @@ export default function App() {
                       </ViewShot>
                     ) : null}
                   </View>
-                  */}
 
                   {/* Weather Fact Section */}
                   <Animated.View

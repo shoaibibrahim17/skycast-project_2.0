@@ -4,7 +4,7 @@
     "slug": "snack-71a282dd-79b4-47c8-967f-e904f66939d7",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/skycast_apaptive.png",
+    "icon": "./assets/skycast_adaptive.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
