@@ -80,17 +80,17 @@ const WEATHER_FACTS = [
 ];
 
 export default function App() {
-  // State hooks for various app functionalities
-  const [activeTab, setActiveTab] = useState('skycast_now'); // Manages active tab
-  const [location, setLocation] = useState(''); // Stores user input for location
-  const [loading, setLoading] = useState(false); // Manages loading state for API calls
-  const [result, setResult] = useState(null); // Stores the final prank result
-  const [showRealWeather, setShowRealWeather] = useState(false); // Toggles visibility of "Show Real Weather" button
-  const [darkMode, setDarkMode] = useState(true); // Manages dark mode state
-  const [fakeData, setFakeData] = useState(null); // Stores fake weather data
-  const [currentSubtitleIndex, setCurrentSubtitleIndex] = useState(0); // Index for rotating subtitles
-  const [weatherFact, setWeatherFact] = useState(''); // Stores the current weather fact
-  const [currentLoadingMsg, setCurrentLoadingMsg] = useState('Consulting the cosmic currents...'); // Dynamic loading messages
+  // State hooks
+  const [activeTab, setActiveTab] = useState('skycast_now');
+  const [location, setLocation] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [showRealWeather, setShowRealWeather] = useState(false);
+  const [darkMode, setDarkMode] = useState(true);
+  const [fakeData, setFakeData] = useState(null);
+  const [currentSubtitleIndex, setCurrentSubtitleIndex] = useState(0);
+  const [weatherFact, setWeatherFact] = useState('');
+  const [currentLoadingMsg, setCurrentLoadingMsg] = useState('Consulting the cosmic currents...');
 
   // Feedback tab states
   const [feedbackText, setFeedbackText] = useState('');
@@ -98,39 +98,32 @@ export default function App() {
   const [feedbackLoading, setFeedbackLoading] = useState(false);
   const [feedbackSuccess, setFeedbackSuccess] = useState(false);
 
-  // Animated values for prank result card and weather fact
-  const fadeAnim = useRef(new Animated.Value(0)).current; // For fade in/out
-  const slideAnim = useRef(new Animated.Value(50)).current; // For slide up
-  const scaleAnim = useRef(new Animated.Value(0.8)).current; // For zoom in
-  const factFadeAnim = useRef(new Animated.Value(1)).current; // For weather fact fade
+  // Animated values
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(50)).current;
+  const scaleAnim = useRef(new Animated.Value(0.8)).current;
+  const factFadeAnim = useRef(new Animated.Value(1)).current;
+  const tabFadeAnim = useRef(new Animated.Value(1)).current;
 
-  // Ref for ViewShot (screenshot)
   const viewShotRef = useRef();
 
-  // Load user preferences (dark mode) and weather facts on mount
+  // Effects
   useEffect(() => {
     loadSettings();
-    rotateSubtitle();
-    setRandomWeatherFact();
-  }, []);
-
-  // Set up interval for rotating subtitles
-  useEffect(() => {
+    rotateSubtitle(); // Initial call
+    setRandomWeatherFact(); // Initial call
     const subtitleInterval = setInterval(rotateSubtitle, 7000);
-    return () => clearInterval(subtitleInterval); // Clear interval on unmount
+    return () => clearInterval(subtitleInterval);
   }, []);
 
-  // Update theme colors based on dark mode state
   const themeColors = darkMode ? darkTheme : lightTheme;
 
-  // Function to toggle dark mode and save preference
   const toggleDarkMode = async () => {
     const newDarkMode = !darkMode;
     setDarkMode(newDarkMode);
     await AsyncStorage.setItem('darkMode', JSON.stringify(newDarkMode));
   };
 
-  // Function to load user settings (dark mode)
   const loadSettings = async () => {
     try {
       const storedDarkMode = await AsyncStorage.getItem('darkMode');
@@ -142,12 +135,10 @@ export default function App() {
     }
   };
 
-  // Function to rotate subtitles
   const rotateSubtitle = () => {
     setCurrentSubtitleIndex((prevIndex) => (prevIndex + 1) % SUBTITLES.length);
   };
 
-  // Function to set a random weather fact
   const setRandomWeatherFact = () => {
     const randomIndex = Math.floor(Math.random() * WEATHER_FACTS.length);
     setWeatherFact(WEATHER_FACTS[randomIndex]);
@@ -157,54 +148,55 @@ export default function App() {
     ]).start();
   };
 
-  // Sound effects
+  // --- Sound effects ---
   const playClickSound = async () => {
+    console.log("Attempting to play click sound...");
+    let soundObject = null;
     try {
-      const { sound } = await Audio.Sound.createAsync(
-        require('./assets/click-sound.mp3')
-      );
-      await sound.playAsync();
-      sound.setOnPlaybackStatusUpdate(status => {
+      soundObject = new Audio.Sound();
+      await soundObject.loadAsync(require('./assets/click-sound.mp3'));
+      await soundObject.playAsync();
+      // Unload the sound when playback is finished
+      soundObject.setOnPlaybackStatusUpdate(async (status) => {
         if (status.didJustFinish) {
-          sound.unloadAsync();
+          await soundObject.unloadAsync();
+          console.log("Click sound unloaded.");
         }
       });
     } catch (error) {
       console.error('Error playing click sound:', error);
+      if (soundObject) {
+        await soundObject.unloadAsync().catch(e => console.error("Error unloading click sound after error:", e));
+      }
     }
   };
 
-  const playResultSound = async (conditionString) => {
+  const playResultSound = async () => {
+    console.log("Attempting to play result sound (click-sound.mp3)...");
+    let soundObject = null;
     try {
-      let soundAsset;
-      const safeCondition = typeof conditionString === 'string' ? conditionString : "";
-
-      console.log(`playResultSound called. Condition (now ignored for sound selection): ${safeCondition}`);
-
-      // Always play click-sound.mp3 for any result
-      console.log("Loading sound: click-sound.mp3 for result display.");
-      soundAsset = require('./assets/click-sound.mp3');
-
-      console.log("Sound asset to be played (module ID):", soundAsset);
-      
-      if (!soundAsset) {
-        console.error("No sound asset was loaded. Skipping playback.");
-        return;
-      }
-
-      const { sound } = await Audio.Sound.createAsync(soundAsset);
-      await sound.playAsync();
-      sound.setOnPlaybackStatusUpdate(status => {
+      soundObject = new Audio.Sound();
+      // As per your log, result sound is also click-sound.mp3. If you have a different prank sound, change the path.
+      // e.g., require('./assets/prank-sound.wav')
+      await soundObject.loadAsync(require('./assets/click-sound.mp3')); 
+      await soundObject.playAsync();
+      // Unload the sound when playback is finished
+      soundObject.setOnPlaybackStatusUpdate(async (status) => {
         if (status.didJustFinish) {
-          sound.unloadAsync();
+          await soundObject.unloadAsync();
+          console.log("Result sound unloaded.");
         }
       });
     } catch (error) {
       console.error('Error playing result sound:', error);
+      if (soundObject) {
+        await soundObject.unloadAsync().catch(e => console.error("Error unloading result sound after error:", e));
+      }
     }
   };
+  // --- End Sound effects ---
 
-  // Random loading messages
+
   const loadingMessages = [
     "Consulting the cosmic currents...",
     "Rerouting atmospheric anomalies...",
@@ -223,7 +215,6 @@ export default function App() {
     setCurrentLoadingMsg(loadingMessages[randomIndex]);
   };
 
-  // Main search/prank logic
   const handleSearch = async () => {
     if (!location.trim()) {
       playClickSound();
@@ -236,18 +227,14 @@ export default function App() {
     setLoading(true);
     setResult(null);
     setFakeData(null);
-    setShowRealWeather(false); // Hide the real weather button until a prank is delivered
-    setRandomWeatherFact(); // Set a new weather fact on each search
+    setShowRealWeather(false);
+    setRandomWeatherFact();
 
-    const loadingInterval = setInterval(rotateLoadingMessage, 2000); // Rotate loading messages every 2 seconds
+    const loadingInterval = setInterval(rotateLoadingMessage, 2000);
 
     try {
-      // Simulate API call delay
       await new Promise(resolve => setTimeout(resolve, 3000));
-
       const lowerCaseLocation = location.toLowerCase();
-
-      // Trigger specific pranks based on keywords
       let prankResult = null;
       let isFakeData = false;
 
@@ -307,7 +294,6 @@ export default function App() {
         };
       }
       else {
-        // Default random prank
         const randomPranks = [
           { message: "Forecast: 90% chance of you still being awesome. 10% chance of rain.", roast: "Don't let the weather dampen your sparkle, you magnificent human." },
           { message: "Outlook: Slightly cloudy with a high probability of sarcasm.", roast: "Prepare for a day as unpredictable as your Wi-Fi signal." },
@@ -339,17 +325,16 @@ export default function App() {
       } else {
         setResult(prankResult);
       }
-      setShowRealWeather(true); // Show real weather button after prank
+      setShowRealWeather(true);
     } catch (error) {
       console.error('Error fetching weather:', error);
       Alert.alert('Error', 'Failed to fetch forecast. The weather gods are busy.');
     } finally {
       setLoading(false);
-      clearInterval(loadingInterval); // Stop loading message rotation
+      clearInterval(loadingInterval);
     }
   };
 
-  // Share functionality
   const onShare = async () => {
     playClickSound();
     if (result) {
@@ -378,18 +363,15 @@ export default function App() {
     }
   };
 
-  // Animation effect for prank result card
   useEffect(() => {
     if (result || fakeData) {
-      playResultSound(result ? result.message : fakeData.condition);
+      playResultSound(); // This will play click-sound.mp3 as per current playResultSound logic
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-      // Reset initial values for animations
       fadeAnim.setValue(0);
       slideAnim.setValue(50);
       scaleAnim.setValue(0.8);
 
-      // Start animations
       Animated.parallel([
         Animated.timing(fadeAnim, {
           toValue: 1,
@@ -410,39 +392,32 @@ export default function App() {
         }),
       ]).start();
     } else {
-      // When result/fakeData are cleared (e.g., new search), reset animations
       fadeAnim.setValue(0);
       slideAnim.setValue(50);
       scaleAnim.setValue(0.8);
     }
   }, [result, fakeData]);
 
-  // Animation for tab switching
-  const tabFadeAnim = useRef(new Animated.Value(1)).current; // Initial opacity for current tab
-
   const switchTab = (tabName) => {
     if (activeTab === tabName) return;
-
     Animated.timing(tabFadeAnim, {
       toValue: 0,
-      duration: 150, // Fast fade out
+      duration: 150,
       useNativeDriver: true,
     }).start(() => {
       setActiveTab(tabName);
       Animated.timing(tabFadeAnim, {
         toValue: 1,
-        duration: 250, // Slower fade in
+        duration: 250,
         useNativeDriver: true,
       }).start();
     });
   };
 
-  // Main render function
   return (
     <View style={styles.container}>
       <StatusBar barStyle={darkMode ? 'light-content' : 'dark-content'} />
       <LinearGradient colors={themeColors.gradientColors} style={styles.background}>
-        {/* Tab Bar */}
         <View style={styles.tabBar}>
           <TouchableOpacity
             style={[styles.tabButton, { borderBottomColor: activeTab === 'skycast_now' ? themeColors.tabActive : 'transparent' }]}
@@ -462,22 +437,18 @@ export default function App() {
           </TouchableOpacity>
         </View>
 
-        {/* Scrollable Content Area */}
         <ScrollView
-          style={styles.scrollViewFlex} // ADDED: Give ScrollView flex: 1
+          style={styles.scrollViewFlex}
           contentContainerStyle={styles.scrollContainer}
           keyboardShouldPersistTaps="handled"
         >
-          {/* KeyboardAvoidingView for input fields */}
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             style={styles.keyboardAvoidingViewContent}
           >
-            {/* Animated.View for tab content fade */}
-            <Animated.View style={{ flex: 1, width: '100%', opacity: tabFadeAnim }}>
+            <Animated.View style={{ width: '100%', opacity: tabFadeAnim }}> {/* Removed flex: 1 */}
               {activeTab === 'skycast_now' ? (
                 <>
-                  {/* Header Section */}
                   <View style={styles.header}>
                     <View style={styles.darkModeContainer}>
                       <Text style={[styles.darkModeText, { color: themeColors.text }]}>{darkMode ? '🌙' : '☀️'}</Text>
@@ -489,8 +460,8 @@ export default function App() {
                         ios_backgroundColor="#3e3e3e"
                         style={styles.darkModeSwitch}
                       />
-                    </View> 
-                    <View> {/* Changed from Animated.View, removed transform */}
+                    </View>
+                    <View>
                       <Image
                         source={darkMode ? require('./assets/logo-dark.png') : require('./assets/logo.png')}
                         style={styles.logo}
@@ -502,7 +473,6 @@ export default function App() {
                     </Text>
                   </View>
 
-                  {/* Search Section */}
                   <View style={styles.searchContainer}>
                     <TextInput
                       style={[styles.input, { backgroundColor: themeColors.inputBg, color: themeColors.text, borderColor: themeColors.inputBorder }]}
@@ -537,7 +507,6 @@ export default function App() {
                     )}
                   </View>
 
-                  {/* New wrapper for dynamic content to stabilize layout */}
                   <View style={styles.dynamicContentWrapper}>
                     {loading ? (
                       <View style={styles.loadingContainer}>
@@ -613,14 +582,12 @@ export default function App() {
                     ) : null}
                   </View>
 
-                  {/* Weather Fact Section */}
                   <Animated.View
                     style={[styles.weatherFactContainer, { backgroundColor: themeColors.factBg, opacity: factFadeAnim }]}>
                     <Text style={[styles.weatherFactText, { color: themeColors.text }]}>{weatherFact}</Text>
                   </Animated.View>
                 </>
               ) : (
-                // Feedback Tab Content
                 <View style={styles.feedbackContainer}>
                   <Text style={[styles.feedbackTitle, { color: themeColors.text }]}>We value your feedback! (Not really)</Text>
                   <Text style={[styles.feedbackDescription, { color: themeColors.subText }]}>Please let us know your thoughts or suggestions below. Or don't. It's a prank app.</Text>
@@ -658,8 +625,6 @@ export default function App() {
                         submission_date: new Date().toLocaleString(),
                       };
                       try {
-                        // Send email via EmailJS using fetch
-                        // IMPORTANT: Replace 'YOUR_EMAILJS_SERVICE_ID' with your actual Service ID from EmailJS
                         const emailJsData = {
                           service_id: 'YOUR_EMAILJS_SERVICE_ID', // <<<<----- REPLACE THIS WITH YOUR ACTUAL SERVICE ID
                           template_id: 'template_hddwqhm',
@@ -678,7 +643,6 @@ export default function App() {
                           throw new Error(`EmailJS Error ${response.status}: ${errorText}`);
                         }
                         console.log('Feedback email sent successfully via fetch to EmailJS!');
-                        // Save to AsyncStorage (original functionality)
                         const existing = await AsyncStorage.getItem('userFeedbacks');
                         const arr = existing ? JSON.parse(existing) : [];
                         arr.push({ feedback: feedbackText.trim(), date: new Date().toISOString() });
@@ -718,7 +682,7 @@ export default function App() {
   );
 }
 
-// Styles for the application
+// Styles
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -728,25 +692,23 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  scrollViewFlex: { // Ensures ScrollView itself takes up all available vertical space
+  scrollViewFlex: { 
     flex: 1,
   },
   scrollContainer: {
-    flexGrow: 1, // Allows content to expand and push ScrollView down
-    paddingBottom: 30, // Adds padding at the bottom of the scrollable content
+    flexGrow: 1, 
+    paddingBottom: 30, 
   },
   keyboardAvoidingViewContent: {
-    flex: 1, // Allows KeyboardAvoidingView to take up available space
-    alignItems: 'center', // Centers content horizontally within this view
+    flex: 1, 
+    alignItems: 'center', 
     padding: 20,
     width: '100%',
   },
-  // NEW STYLE: Wrapper to stabilize dynamic content area
   dynamicContentWrapper: {
     width: '100%',
-    alignItems: 'center', // Centers content horizontally within this wrapper
-    minHeight: 450, // IMPORTANT: Adjust this value to be slightly larger than your tallest content card (e.g., the prank result card with share buttons) to prevent jumps.
-    // Removed justifyContent: 'center' to allow content to flow from top and enable scrolling if it exceeds minHeight.
+    alignItems: 'center', 
+    minHeight: 450, 
   },
   tabBar: {
     flexDirection: 'row',
@@ -763,30 +725,33 @@ const styles = StyleSheet.create({
     borderBottomWidth: 3,
   },
   tabButtonText: {
-    fontSize: 18,
+    fontSize: 18, // Slightly larger for better readability
   },
   header: {
     alignItems: 'center',
-    marginBottom: 20,
-    marginTop: 20,
+    marginBottom: 20, // Adjusted margin
+    marginTop: 20, // Adjusted margin
   },
   darkModeContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     position: 'absolute',
-    right: 0,
-    top: 0,
-    padding: 10,
+    right: 0, // Adjusted to be within padding of keyboardAvoidingViewContent
+    top: 0,   // Adjusted to be within padding of keyboardAvoidingViewContent
+    padding: 10, // Added padding for better touch area
   },
   darkModeText: {
     marginRight: 5,
     fontSize: 18,
   },
+  darkModeSwitch: {
+    // transform: [{ scale: 0.8 }], // Can be adjusted if needed
+  },
   logo: {
-    width: 100,
+    width: 100, // Slightly larger logo
     height: 100,
     resizeMode: 'contain',
-    marginBottom: 5,
+    marginBottom: 5, // Reduced margin
   },
   title: {
     fontSize: 32,
@@ -799,12 +764,12 @@ const styles = StyleSheet.create({
   },
   searchContainer: {
     width: '100%',
-    alignItems: 'center',
+    alignItems: 'center', // Center children like input and button
     marginBottom: 20,
-    paddingHorizontal: 10,
+    paddingHorizontal: 10, // Add horizontal padding
   },
   input: {
-    width: '100%',
+    width: '100%', // Take full width of parent
     padding: 15,
     borderRadius: 25,
     fontSize: 16,
@@ -812,7 +777,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   searchButton: {
-    width: '100%',
+    width: '100%', // Take full width of parent
     padding: 15,
     borderRadius: 25,
     alignItems: 'center',
@@ -824,12 +789,12 @@ const styles = StyleSheet.create({
     fontSize: 18,
   },
   realWeatherButton: {
-    width: '100%',
+    width: '100%', // Take full width of parent
     padding: 10,
     borderRadius: 25,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#ccc',
+    borderColor: '#ccc', // Example border color
   },
   realWeatherButtonText: {
     fontSize: 14,
@@ -838,11 +803,11 @@ const styles = StyleSheet.create({
   loadingContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    width: '100%',
+    width: '100%', 
     // This view now benefits from the minHeight of dynamicContentWrapper
   },
   loadingImage: {
-    width: 120,
+    width: 120, // Slightly larger
     height: 120,
     resizeMode: 'contain',
   },
@@ -867,8 +832,8 @@ const styles = StyleSheet.create({
     // This view now benefits from the minHeight of dynamicContentWrapper
   },
   weatherCard: {
-    width: '95%',
-    maxWidth: 400,
+    width: '95%', // Use percentage for responsiveness
+    maxWidth: 400, // Max width for larger screens
     padding: 20,
     borderRadius: 20,
     shadowColor: '#000',
@@ -876,10 +841,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 6,
     elevation: 8,
-    alignItems: 'center',
+    alignItems: 'center', // Center content within the card
   },
   locationText: {
-    fontSize: 28,
+    fontSize: 28, // Increased size
     fontWeight: 'bold',
     marginBottom: 10,
     textAlign: 'center',
@@ -890,21 +855,21 @@ const styles = StyleSheet.create({
     marginBottom: 15,
   },
   weatherIcon: {
-    width: 80,
+    width: 80, // Adjusted size
     height: 80,
     resizeMode: 'contain',
     marginRight: 15,
   },
   tempText: {
-    fontSize: 48,
+    fontSize: 48, // Increased size
     fontWeight: 'bold',
   },
   conditionText: {
-    fontSize: 22,
-    marginTop: -5,
+    fontSize: 22, // Increased size
+    marginTop: -5, // Adjust position relative to temp
   },
   extraInfoText: {
-    fontSize: 16,
+    fontSize: 16, // Increased size
     fontStyle: 'italic',
     marginBottom: 15,
     textAlign: 'center',
@@ -919,21 +884,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   detailLabel: {
-    fontSize: 12,
-    fontWeight: 'bold',
+    fontSize: 12, // Adjusted for clarity
+    fontWeight: 'bold', // Make labels bolder
     marginBottom: 5,
   },
   detailValue: {
     fontSize: 16,
   },
   weatherMessage: {
-    fontSize: 24,
+    fontSize: 24, // Larger for impact
     fontWeight: 'bold',
     textAlign: 'center',
     marginVertical: 10,
   },
   roastText: {
-    fontSize: 18,
+    fontSize: 18, // Slightly larger
     fontStyle: 'italic',
     textAlign: 'center',
     marginBottom: 10,
@@ -941,31 +906,31 @@ const styles = StyleSheet.create({
   nameSign: {
     fontSize: 14,
     fontStyle: 'italic',
-    alignSelf: 'flex-end',
+    alignSelf: 'flex-end', // Align to the right
     marginTop: 10,
-    marginRight: 10,
+    marginRight: 10, // Add some margin
   },
   shareButtonContainer: {
     flexDirection: 'row',
     marginTop: 20,
     width: '100%',
-    justifyContent: 'space-around',
-    paddingHorizontal: 10,
+    justifyContent: 'space-around', // Distribute space
+    paddingHorizontal: 10, // Add padding if buttons are too close to edge
   },
-  shareButton: {
+  shareButton: { // This style seems to be unused, screenshotButton is used twice
     paddingVertical: 10,
     paddingHorizontal: 15,
-    borderRadius: 25,
-    flex: 1,
-    marginHorizontal: 5,
+    borderRadius: 25, // Rounded corners
+    flex: 1, // Allow button to take available space
+    marginHorizontal: 5, // Space between buttons
     alignItems: 'center',
   },
-  screenshotButton: {
+  screenshotButton: { // Applied to both buttons in JSX
     paddingVertical: 10,
     paddingHorizontal: 15,
-    borderRadius: 25,
-    flex: 1,
-    marginHorizontal: 5,
+    borderRadius: 25, // Rounded corners
+    flex: 1, // Allow button to take available space
+    marginHorizontal: 5, // Space between buttons
     alignItems: 'center',
   },
   shareButtonText: {
@@ -977,18 +942,19 @@ const styles = StyleSheet.create({
     width: '100%',
     padding: 15,
     borderRadius: 15,
-    marginTop: 25,
-    marginBottom: 10,
+    marginTop: 25, // Ensure space above
+    marginBottom: 10, // Ensure space below for scrolling
   },
   weatherFactText: {
     fontSize: 15,
     textAlign: 'center',
     fontStyle: 'italic',
   },
+  // Feedback Tab Styles
   feedbackContainer: {
     width: '100%',
-    minHeight: 400,
-    marginTop: 30,
+    minHeight: 400, // Ensure it has some height
+    marginTop: 30, // Consistent margin
     alignItems: 'center',
     paddingHorizontal: 10,
   },
@@ -1004,22 +970,21 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: 10,
   },
-  feedbackInput: {
+  feedbackInput: { // Common style for both feedback inputs
     width: '100%',
-    height: 150,
     borderRadius: 15,
     padding: 15,
     fontSize: 16,
-    marginBottom: 15,
+    marginBottom: 15, // Space between inputs
     borderWidth: 1,
-    textAlignVertical: 'top', // For multiline TextInput
+    // height is specific, so set individually or adjust if multiline needs more
   },
   feedbackSubmitButton: {
     width: '100%',
-    padding: 15,
+    padding: 15, // Consistent padding
     borderRadius: 25,
     alignItems: 'center',
-    marginTop: 10,
+    marginTop: 10, // Space above button
   },
   feedbackSubmitButtonText: {
     color: 'white',
@@ -1033,3 +998,4 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
 });
+
