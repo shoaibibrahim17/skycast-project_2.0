@@ -165,13 +165,12 @@ const LOADING_MESSAGES = [
     "Generating a forecast as reliable as your ex...",
     "Polishing the crystal ball...",
     "Hoping for a funny outcome...",
-    "Verifying the prank's comedic integrity...",
+    
 ];
 
 const RAW_TRY_MORE_STRINGS = [
   "Wanna try more? It's weather, not your ex’s mood swings!",
   "Keep trying — maybe one day I’ll actually care. 😌",
-  "You think I'm gonna go serious now? Cute. Really cute.",
   "The sky said no. Try harder.",
   "Aur try karo... shayad NASA ka weather mil jaaye. 🚀",
   "Yeh Skycast hai, IMD nahi. Expectations kam rakho. 📉",
@@ -192,10 +191,10 @@ const RAW_TRY_MORE_STRINGS = [
   "This is a roast app, not a meteorology degree. 🎓",  
   "Weather still broken. So are your hopes.💔",
   "I’d tell you the weather, but where’s the fun in that?",
-  "You must really believe in second chances.", // This was the last element before the misplaced ones
-  "Sorry, still no clouds. Just your cloudy judgment. ☁️", // Moved inside
-  "Nope. Not this city either. Try your hometown trauma. 🏠", // Moved inside
-  "This app is powered by sarcasm, not satellites. 🛰", // Moved inside, now the last element
+  "You must really believe in second chances.", 
+  "Sorry, still no clouds. Just your cloudy judgment. ☁️", 
+  "Nope. Not this city either. Try your hometown trauma. 🏠", 
+  "This app is powered by sarcasm, not satellites. 🛰", 
 ];
 
 const RAW_FEEDBACK_STRINGS = [
@@ -243,7 +242,7 @@ const RAW_FEEDBACK_STRINGS = [
   "Your review could change the course of... this app. Maybe."
 ];
 
-// Helper to create dialog objects with varying titles/buttons
+
 const createDialogObjects = (messages, type) => {
   const titles = type === 'tryMore' ?
     ["Try More Locations!", "Try More Locations!", "Try More Locations!", "Try More Locations!", "Try More Locations!"] :
@@ -266,44 +265,41 @@ const FEEDBACK_MESSAGES = createDialogObjects(RAW_FEEDBACK_STRINGS, 'feedback');
 
 
 export default function App() {
-  // State hooks for various app functionalities
-  const [activeTab, setActiveTab] = useState('skycast_now'); // Manages active tab
-  const [location, setLocation] = useState(''); // Stores user input for location
-  const [loading, setLoading] = useState(false); // Manages loading state for API calls
-  const [result, setResult] = useState(null); // Stores the final prank result
-  const [showRealWeather, setShowRealWeather] = useState(false); // Toggles visibility of "Show Real Weather" button
-  const [darkMode, setDarkMode] = useState(true); // Default to dark mode
-  const [fakeData, setFakeData] = useState(null); // Stores fake weather data
-  const [currentSubtitleIndex, setCurrentSubtitleIndex] = useState(0); // Index for rotating subtitles
-  const [weatherFact, setWeatherFact] = useState(''); // Stores the current weather fact
-  const [currentLoadingMsg, setCurrentLoadingMsg] = useState(LOADING_MESSAGES[0]); // Dynamic loading messages
-  const [loadingDots, setLoadingDots] = useState(''); // For the fake loading dot animation
+  
+  const [activeTab, setActiveTab] = useState('skycast_now'); 
+  const [location, setLocation] = useState(''); 
+  const [loading, setLoading] = useState(false); 
+  const [result, setResult] = useState(null); 
+  const [showRealWeather, setShowRealWeather] = useState(false); 
+  const [darkMode, setDarkMode] = useState(true); 
+  const [fakeData, setFakeData] = useState(null); 
+  const [currentSubtitleIndex, setCurrentSubtitleIndex] = useState(0); 
+  const [currentLoadingMsg, setCurrentLoadingMsg] = useState(LOADING_MESSAGES[0]); 
+  const [loadingDots, setLoadingDots] = useState(''); 
   const [dynamicCardBg, setDynamicCardBg] = useState(null); // For dynamic weather card background
-  const [lastRandomRoastIndex, setLastRandomRoastIndex] = useState(-1); // To track the last random roast
-  const [shuffledWeatherFacts, setShuffledWeatherFacts] = useState([]); // For non-repeating facts
+  const [lastRandomRoastIndex, setLastRandomRoastIndex] = useState(-1); 
+  const [shuffledWeatherFacts, setShuffledWeatherFacts] = useState([]); 
   const [currentFactIndex, setCurrentFactIndex] = useState(0); 
-  const [hasShownTryMoreLocationsPrompt, setHasShownTryMoreLocationsPrompt] = useState(false); // New prompt
+  const [hasShownTryMoreLocationsPrompt, setHasShownTryMoreLocationsPrompt] = useState(false); 
   const [hasShownFeedbackPrompt, setHasShownFeedbackPrompt] = useState(false); 
   const [prankCount, setPrankCount] = useState(0); 
   
-  // State for non-repeating dialog messages
+  // For non-repeating dialog messages
   const [shuffledTryMoreDialogs, setShuffledTryMoreDialogs] = useState([]);
   const [currentTryMoreDialogIndex, setCurrentTryMoreDialogIndex] = useState(0);
   const [shuffledFeedbackDialogs, setShuffledFeedbackDialogs] = useState([]);
   const [currentFeedbackDialogIndex, setCurrentFeedbackDialogIndex] = useState(0);
 
   // Feedback tab states
-  const [feedbackText, setFeedbackText] = useState(''); // Stores user's feedback text
-  const [feedbackUserName, setFeedbackUserName] = useState(''); // Stores user's name for feedback
-  const [feedbackLoading, setFeedbackLoading] = useState(false); // Manages loading state for feedback submission
-  const [feedbackSuccess, setFeedbackSuccess] = useState(false); // Tracks if feedback submission was successful
-
+  const [feedbackText, setFeedbackText] = useState(''); 
+  const [feedbackUserName, setFeedbackUserName] = useState(''); 
+  const [feedbackLoading, setFeedbackLoading] = useState(false); 
+  const [feedbackSuccess, setFeedbackSuccess] = useState(false); 
   // Animated values
-  const fadeAnim = useRef(new Animated.Value(0)).current; // For prank result card fade in/out
-  const slideAnim = useRef(new Animated.Value(50)).current; // For prank result card slide up
-  const scaleAnim = useRef(new Animated.Value(0.8)).current; // For prank result card zoom in
-  const factFadeAnim = useRef(new Animated.Value(1)).current; // For weather fact fade
-  const tabFadeAnim = useRef(new Animated.Value(1)).current; // For tab content fade
+  const fadeAnim = useRef(new Animated.Value(0)).current; 
+  const slideAnim = useRef(new Animated.Value(50)).current; 
+  const scaleAnim = useRef(new Animated.Value(0.8)).current; 
+  const factFadeAnim = useRef(new Animated.Value(1)).current; 
 
   // Ref for ViewShot (screenshot)
   const viewShotRef = useRef();
@@ -474,30 +470,30 @@ export default function App() {
   
   const handleSearch = async () => {
     if (!location.trim()) {
-      await playClickSound(); // Await sound before showing alert
+      await playClickSound(); 
       Alert.alert('Location Required', 'Please enter a location to get your highly scientific forecast.');
       return;
     }
 
-    await playClickSound(); // Await sound
-    Keyboard.dismiss(); // Dismiss keyboard
+    await playClickSound(); 
+    Keyboard.dismiss(); 
     setLoading(true);
-    setResult(null); // Clear previous result
-    setFakeData(null); // Clear previous fake data
-    setShowRealWeather(false); // Hide the real weather button until a prank is delivered
-    setDynamicCardBg(null); // Clear previous dynamic background
+    setResult(null); 
+    setFakeData(null); 
+    setShowRealWeather(false); 
+    setDynamicCardBg(null); 
 
-    const loadingInterval = setInterval(rotateLoadingMessage, 2000); // Rotate loading messages
+    const loadingInterval = setInterval(rotateLoadingMessage, 2000); 
 
     try {
-      // Simulate API call delay
+      
       await new Promise(resolve => setTimeout(resolve, 3000));
 
       const lowerCaseLocation = location.toLowerCase();
       let prankResult = null;
       let isFakeData = false;
 
-      // --- Your existing prank logic ---
+      
       if (lowerCaseLocation.includes('north pole') || lowerCaseLocation.includes('siberia')) {
         prankResult = { location, message: "Warning: Extremely high probability of frostbite and existential dread.", roast: "You're probably just trying to escape your responsibilities, aren't you?" };
       } else if (lowerCaseLocation.includes('desert') || lowerCaseLocation.includes('sahara')) {
@@ -515,17 +511,17 @@ export default function App() {
         isFakeData = true;
         prankResult = { location, temperature: 'Fluctuating', condition: 'Quantum Instability', humidity: 'Variable', windSpeed: 'Temporal Gusts', high: 'Unknowable', low: 'Unknowable', extra: 'Warning: May cause spontaneous existence changes.' };
       } else {
-        // Default random prank
+       
         const randomPranks = [
-          { message: "Forecast: 90% chance of you still being awesome. 10% chance of rain.", roast: "Don't let the weather dampen your sparkle, you magnificent human." },
-          { message: "Outlook: Slightly cloudy with a high probability of sarcasm.", roast: "Prepare for a day as unpredictable as your Wi-Fi signal." },
+          
+          
           { message: "Weather Alert: Expect a shower of compliments. (Not from us, though).", roast: "You're doing great, sweetie. The weather, however, is just 'meh'." },
-          { message: "Today's forecast: Mostly awkward silences, followed by a slight breeze of indifference.", roast: "Sounds like your last family gathering, right?" },
-          { message: "It's gonna be a 'stay in bed and question all your life choices' kind of day.", roast: "Perfect for binge-watching that show you regret starting." },
+       
+         
           { message: "The weather is as confused as you are about your career path.", roast: "At least one of you will figure it out eventually." },
-          { message: "Expect a high chance of 'why am I even here?' moments.", roast: "Don't worry, it's not just you. It's the atmosphere." },
+          
         ];
-        // Adding the new roast messages
+        
         const newRoasts = [
           { message: "Go Check Outside!", roast: "Pro tip: Windows exist for a reason!" },
           { message: "Go Check Outside!", roast: "Thanos snapped... and the weather changed." },
@@ -579,7 +575,7 @@ export default function App() {
           { message: "Go Check Outside!", roast: "This app is like its creator -  on the outside, chaos inside" },
           
         ];
-        randomPranks.push(...newRoasts); // Append the new roasts to the existing array
+        randomPranks.push(...newRoasts); // Append the roasts
 
         let randomIndex;
         if (randomPranks.length > 1) {
@@ -589,14 +585,14 @@ export default function App() {
         } else if (randomPranks.length === 1) {
           randomIndex = 0;
         } else {
-          // Fallback if randomPranks is somehow empty, though unlikely
+          
           randomIndex = 0;
         }
         setLastRandomRoastIndex(randomIndex);
         const randomPrank = randomPranks[randomIndex];
         prankResult = { location, ...randomPrank };
       }
-      // --- End of prank logic ---
+      
 
       if (isFakeData) {
         setFakeData(prankResult);
@@ -604,8 +600,8 @@ export default function App() {
         setResult(prankResult);
       }
 
-      setPrankCount(prevCount => prevCount + 1); // Increment prank count
-      // --- Set Conditional Card Background Color ---
+      setPrankCount(prevCount => prevCount + 1); 
+      
       let newCardBg = null;
       const contentStringForBg = (prankResult.message || prankResult.condition || '').toLowerCase();
 
@@ -619,7 +615,7 @@ export default function App() {
         newCardBg = 'rgba(128, 0, 128, 0.8)'; // Purple / Mysterious
       }
       setDynamicCardBg(newCardBg); // Set the dynamic background, or null to use theme default
-      // --- End Conditional Card Background Color ---
+      
 
       setShowRealWeather(true); // Show real weather button after prank
     } catch (error) {
@@ -627,13 +623,13 @@ export default function App() {
       Alert.alert('Error', 'Failed to fetch forecast. The weather gods are busy.');
     } finally {
       setLoading(false);
-      clearInterval(loadingInterval); // Stop loading message rotation
+      clearInterval(loadingInterval); 
     }
   };
 
   // Share functionality
   const onShare = async () => {
-    await playClickSound(); // Await sound
+    await playClickSound(); 
     if (result) {
       try {
         const shareMessage = `SkyC⚡st says for ${result.location}: "${result.message}" ${result.roast} #SkyCastPrank #WeatherPrank`;
@@ -645,11 +641,11 @@ export default function App() {
     }
   };
 
-  // Screenshot and share functionality
+  
   const captureAndShareScreenshot = async () => {
-    await playClickSound(); // Await sound
+    await playClickSound(); 
     try {
-      // Ensure viewShotRef.current and its capture method are available
+      
       if (viewShotRef.current && typeof viewShotRef.current.capture === 'function') {
         const uri = await viewShotRef.current.capture();
         if (uri) {
@@ -685,7 +681,7 @@ export default function App() {
         Animated.timing(slideAnim, { toValue: 0, duration: 500, easing: Easing.out(Easing.ease), useNativeDriver: true }),
         Animated.spring(scaleAnim, { toValue: 1, friction: 5, tension: 40, useNativeDriver: true }),
       ]).start(() => {
-        // After animation completes, if it's the first prank and alert hasn't been shown
+        
         // This callback runs once per successful animation tied to a new result/fakeData/prankCount
         if (prankCount === 1 && !hasShownTryMoreLocationsPrompt) {
           // Only show "Try More" on the very first prank, if not already shown
@@ -730,12 +726,10 @@ export default function App() {
   }, [result, fakeData, prankCount, shuffledTryMoreDialogs, currentTryMoreDialogIndex, shuffledFeedbackDialogs, currentFeedbackDialogIndex]); // Added dialog state dependencies
 
 
-  // Animation for tab switching
+ 
   const switchTab = async (tabName) => {
-    if (activeTab === tabName) return; // Do nothing if already on the tab
-    await playClickSound(); // Play sound on tab switch
-
-    // Animate out the current tab content
+    if (activeTab === tabName) return; // 
+    await playClickSound(); 
     Animated.timing(tabFadeAnim, {
       toValue: 0,
       duration: 150, // Fast fade out
@@ -745,7 +739,7 @@ export default function App() {
       // Animate in the new tab content
       Animated.timing(tabFadeAnim, {
         toValue: 1,
-        duration: 250, // Slower fade in
+        duration: 250, 
         useNativeDriver: true,
       }).start();
     });
@@ -763,15 +757,14 @@ export default function App() {
     const feedbackData = {
       feedback_message: feedbackText.trim(),
       user_name: feedbackUserName.trim() || 'Anonymous SkyC⚡st User',
-      submission_date: new Date().toLocaleString(), // More readable date format
+      submission_date: new Date().toLocaleString(), 
     };
     try {
-      // IMPORTANT: Replace 'YOUR_EMAILJS_SERVICE_ID' with your actual Service ID from EmailJS
-      // and ensure your template_id and user_id are correct.
+      
       const emailJsData = {
-        service_id: 'my_awesome_service_id', // <<<<----- YOUR ACTUAL ID WILL GO HERE
-        template_id: 'template_hddwqhm',       // Your EmailJS Template ID
-        user_id: 'sGTlSc79GW0mB6ocv',          // Your EmailJS User ID (Public Key)
+        service_id: 'service_ty9k346S', 
+        template_id: 'template_hddwqhm',       
+        user_id: 'sGTlSc79GW0mB6ocv',          
         template_params: feedbackData,
       };
       const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
@@ -785,7 +778,7 @@ export default function App() {
       }
       console.log('Feedback email sent successfully via fetch to EmailJS!');
 
-      // Optionally save to AsyncStorage as a backup or local log
+      
       const existingFeedbacks = await AsyncStorage.getItem('userFeedbacks');
       const feedbacksArray = existingFeedbacks ? JSON.parse(existingFeedbacks) : [];
       feedbacksArray.push(feedbackData); // Save the structured feedback
@@ -807,7 +800,7 @@ export default function App() {
   // --- End Feedback Submission ---
 
 
-  // Main render function
+  
   return (
     <View style={styles.container}>
       <StatusBar barStyle={darkMode ? 'light-content' : 'dark-content'} />
@@ -835,7 +828,7 @@ export default function App() {
         {/* KeyboardAvoidingView as the outer container for scrolling content */}
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={{ flex: 1 }} // KAV takes up available space
+          style={{ flex: 1 }} 
         >
           {/* ScrollView nested inside KAV */}
           <ScrollView
@@ -854,8 +847,8 @@ export default function App() {
                       <Switch
                         value={darkMode}
                         onValueChange={toggleDarkMode}
-                        trackColor={{ false: '#767577', true: themeColors.buttonBg }} // Use theme color for active track
-                        thumbColor={darkMode ? themeColors.accentColor : '#f4f3f4'} // Use theme color for thumb
+                        trackColor={{ false: '#767577', true: themeColors.buttonBg }} 
+                        thumbColor={darkMode ? themeColors.accentColor : '#f4f3f4'} 
                         ios_backgroundColor="#3e3e3e"
                         style={styles.darkModeSwitch}
                       />
@@ -882,7 +875,7 @@ export default function App() {
                       onChangeText={setLocation}
                       onSubmitEditing={handleSearch} // Trigger search on submit
                       returnKeyType="search" // Show search button on keyboard
-                      editable={!loading} // Disable input while loading
+                      editable={!loading} 
                     />
                     <TouchableOpacity
                       style={[styles.searchButton, { backgroundColor: themeColors.buttonBg }]}
