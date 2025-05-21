@@ -28,7 +28,7 @@ import ViewShot from 'react-native-view-shot';
 
 const { width, height } = Dimensions.get('window');
 
-// --- THEME COLORS ---
+
 const lightTheme = {
   gradientColors: ['#6DD5FA', '#FF7F00'], // Light blue to orange
   text: '#333333',
@@ -57,7 +57,7 @@ const darkTheme = {
   factBg: 'rgba(40, 50, 70, 0.8)', // Dark, desaturated blue-grey, semi-transparent
 };
 
-// --- SUBTITLES ---
+
 const SUBTITLES = [
   "Made with the help of Tony Stark (kinda)",
   "Your Friendly Neighborhood Weather Report",
@@ -71,7 +71,7 @@ const SUBTITLES = [
 ];
 
 
-// --- FAKE WEATHER FACTS ---
+
 const WEATHER_FACTS = [
   "The highest temperature ever recorded on Earth was 56.7°C (134°F) in Death Valley, USA.",
   "The coldest temperature recorded was −89.2°C (−128.6°F) in Antarctica.",
@@ -144,7 +144,7 @@ const WEATHER_FACTS = [
     "Some people can literally 'smell' rain coming. (Like a superpower!)",
 ];
 
-// --- Utility function to shuffle an array (Fisher-Yates shuffle, public domain, see MDN) ---
+
 function shuffleArray(array) {
   const arr = array.slice();
   for (let i = arr.length - 1; i > 0; i--) {
@@ -154,7 +154,7 @@ function shuffleArray(array) {
   return arr;
 }
 
-// --- LOADING MESSAGES ---
+
 const LOADING_MESSAGES = [
     "Consulting the cosmic currents...",
     "Rerouting atmospheric anomalies...",
@@ -283,6 +283,7 @@ export default function App() {
   const [hasShownTryMoreLocationsPrompt, setHasShownTryMoreLocationsPrompt] = useState(false); 
   const [hasShownFeedbackPrompt, setHasShownFeedbackPrompt] = useState(false); 
   const [prankCount, setPrankCount] = useState(0); 
+  const [weatherFact, setWeatherFact] = useState(''); // Added missing weatherFact state
   
   // For non-repeating dialog messages
   const [shuffledTryMoreDialogs, setShuffledTryMoreDialogs] = useState([]);
@@ -300,6 +301,7 @@ export default function App() {
   const slideAnim = useRef(new Animated.Value(50)).current; 
   const scaleAnim = useRef(new Animated.Value(0.8)).current; 
   const factFadeAnim = useRef(new Animated.Value(1)).current; 
+  const tabFadeAnim = useRef(new Animated.Value(1)).current; 
 
   // Ref for ViewShot (screenshot)
   const viewShotRef = useRef();
@@ -968,16 +970,16 @@ export default function App() {
                               Go Check Outside!
                             </Text>
                             {/* <Text style={[styles.weatherMessage, { color: themeColors.text }]}>{result.message}</Text> */} {/* Commented out to display only one title above roast */}
-                            <Text style={[styles.roastText, { color: themeColors.accentColor }]}>{result.roast}</Text>
-                            <Text style={[styles.nameSign, { color: themeColors.subText }]}>- Sk Ibrahim</Text>
-                            <View style={styles.shareButtonContainer}>
-                              <TouchableOpacity style={[styles.screenshotButton, { backgroundColor: themeColors.buttonBg }]} onPress={captureAndShareScreenshot} activeOpacity={0.7}>
-                                <Text style={styles.shareButtonText}>Share Screenshot</Text>
-                              </TouchableOpacity>
-                            </View>
-                          </View>
-                        </Animated.View>
-                      </ViewShot>
+                  <Text style={[styles.roastText, { color: themeColors.accentColor }]}>{result.roast}</Text>
+                  <Text style={[styles.nameSign, { color: themeColors.subText }]}>- Sk Ibrahim</Text>
+                  <View style={styles.shareButtonContainer}>
+                    <TouchableOpacity style={[styles.screenshotButton, { backgroundColor: themeColors.buttonBg }]} onPress={captureAndShareScreenshot} activeOpacity={0.7}>
+                      <Text style={styles.shareButtonText}>Share Screenshot</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </Animated.View>
+            </ViewShot>
                     ) : (
                       // Empty state placeholder before any search
                       <Text style={[styles.emptyStateText, { color: themeColors.subText }]}>Enter a location to unlock the forecast...</Text>
