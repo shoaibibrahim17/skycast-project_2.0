@@ -32,10 +32,10 @@ const { width, height } = Dimensions.get('window');
 
 const lightTheme = {
   gradientColors: ['#6DD5FA', '#FF7F00'], // Light blue to orange
-  text: '#333333',
-  subText: '#555555',
+  text: '#000000', // iOS often uses pure black or very dark gray for text
+  subText: '#3c3c4399', // iOS secondary label color (opacity 60% of #3C3C43)
   accentColor: '#FF7F00',
-  inputBg: '#FFFFFF',
+  inputBg: '#f2f2f7', // iOS grouped table view cell background / input field background
   inputBorder: '#CCCCCC',
   buttonBg: '#4c669f',
   cardBg: 'rgba(255, 255, 255, 0.88)', // Slightly transparent white for a softer look
@@ -46,11 +46,11 @@ const lightTheme = {
 
 const darkTheme = {
   gradientColors: ['#1A2980', '#26D0CE'], // Dark blue to turquoise
-  text: '#FFFFFF',
-  subText: '#BBBBBB',
+  text: '#FFFFFF', // Pure white for text on dark backgrounds
+  subText: '#ebebf599', // iOS secondary label color for dark mode (opacity 60% of #EBEBF5)
   accentColor: '#26D0CE',
-  inputBg: '#333333',
-  inputBorder: '#555555',
+  inputBg: '#2c2c2e', // iOS dark mode grouped table view cell background / input field background
+  inputBorder: '#3a3a3c', // iOS dark mode separator color, can be used for subtle borders
   buttonBg: '#26D0CE',
   cardBg: 'rgba(20, 30, 55, 0.8)', // Dark, slightly desaturated blue, semi-transparent
   tabActive: '#26D0CE',
@@ -171,6 +171,7 @@ const LOADING_MESSAGES = [
 
 const RAW_TRY_MORE_STRINGS = [
   "Wanna try more? It's weather, not your ex’s mood swings!",
+  "Keep exploring more locations(Places) like a lost intern",
   "Keep trying — maybe one day I’ll actually care. 😌",
   "The sky said no. Try harder.",
   "Aur try karo... shayad NASA ka weather mil jaaye. 🚀",
@@ -196,10 +197,20 @@ const RAW_TRY_MORE_STRINGS = [
   "Sorry, still no clouds. Just your cloudy judgment. ☁️", 
   "Nope. Not this city either. Try your hometown trauma. 🏠", 
   "This app is powered by sarcasm, not satellites. 🛰", 
-];
+  "This app roasts, but I'll compliment you... Maybe",
+  "This app isn't your crush, it won't ignore you and reply you with a roast.. everytime",
+]; 
 
 const RAW_FEEDBACK_STRINGS = [
   "Tell me how much you loved it. Or hated it. I’ll pretend to listen.",
+  "Loved it? Hated it? Say it. I wont't cry , Probably",
+  "Say something nice or brutally honest. I'm sensitive but curious",
+  "You have been roasted, now its your turn to roast me",
+  "This app judged now, now judged it back",
+  "Roast me back via the feedback form, I dare you",
+  "Was the roasts good, or do I have to take extra classes in sarcasm",
+  "Your review is more important than your attendance in college....For real",
+  "Be honest, but not brutally honest. I'm sensitive remember?",
   "Was the roast medium or well-done? 👨‍🍳 Drop a review!",
   "Feedback time! Be honest... but not too honest. I’m sensitive. 😢",
   "Your opinion matters.* (*only if it's 5 stars)",
@@ -243,11 +254,13 @@ const RAW_FEEDBACK_STRINGS = [
   "Your review could change the course of... this app. Maybe."
 ];
 
+// Constant for the feedback prompt alert title
+const FEEDBACK_PROMPT_TITLE = "Share Your Thoughts?";
 
 const createDialogObjects = (messages, type) => {
   const titles = type === 'tryMore' ?
     ["Try More Locations!", "Try More Locations!", "Try More Locations!", "Try More Locations!", "Try More Locations!"] :
-    ["Your Thoughts?", "Feedback Time!", "Spill the Tea!", "Rate This Chaos!", "Well...?"];
+    [FEEDBACK_PROMPT_TITLE]; // Use the constant title for all feedback prompts
   const buttonTexts = type === 'tryMore' ?
     ["Let's Do It!", "Hit Me!", "Why Not?", "Okay, Fine.", "Try Again!"] :
     ["Submit It!", "Alright.", "Done.", "Send Thoughts", "Maybe Later"];
@@ -587,6 +600,13 @@ export default function App() {
           { message: "Go Check Outside!", roast: "Skycast is coded with care.. by someone who fears eye contact but not roasting people." },
           { message: "Go Check Outside!", roast: "Don't blame the app, blame the soft-spoken dev with a dark sense of humor." },
           { message: "Go Check Outside!", roast: "This app is like its creator -  on the outside, chaos inside" },
+          { message: "Go Check Outside!", roast: "You checking the forecast, but not my messages. Rude." },
+          { message: "Go Check Outside!", roast: "Your CGPA is lower than the projector brighness in Room 109." },
+          { message: "Go Check Outside!", roast: "you're the reason climate change seems okay." },
+          { message: "Go Check Outside!", roast: "You're hotter than the hostel paneer on Sundays" },
+           { message: "Go Check Outside!", roast: "You're hotter than the room temperature of our Classroom" },
+
+
           
         ];
         randomPranks.push(...newRoasts); // Append the roasts
@@ -1192,10 +1212,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight + 10 : 40,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(120,120,120,0.5)', // Consider theming this
+    // borderBottomWidth: 1, // iOS tab bars usually don't have a full bottom border
+    // borderBottomColor: 'rgba(120,120,120,0.5)', 
     backgroundColor: 'transparent', // Ensure gradient shows through
-    width: '100%',
+    // width: '100%', // Removed, let content define width if centered
   },
   tabButton: {
     marginHorizontal: 20,
@@ -1203,7 +1223,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 3, // Active tab indicator
   },
   tabButtonText: {
-    fontSize: 18, // Slightly larger for better readability
+    fontSize: 17, // Common iOS tab bar font size
   },
   header: {
     alignItems: 'center',
@@ -1232,13 +1252,13 @@ const styles = StyleSheet.create({
     marginBottom: 5, // Reduced margin
   },
   title: {
-    fontSize: 36, // Increased title size
+    fontSize: 34, // iOS Large Title size
     fontWeight: 'bold',
     marginBottom: 5,
   },
   subtitle: {
-    fontSize: 17, // Slightly increased subtitle size
-    fontStyle: 'italic',
+    fontSize: 15, // iOS footnote or caption size, good for subtitles
+    // fontStyle: 'italic', // Italics are less common in iOS for subtitles unless specific emphasis
     marginBottom: 10, // Added more space below subtitle
     textAlign: 'center', // Added for better subtitle centering
     paddingHorizontal: 10, // Added for better subtitle centering
@@ -1252,10 +1272,10 @@ const styles = StyleSheet.create({
   input: {
     width: '100%', // Take full width of parent
     padding: 15,
-    borderRadius: 25,
-    fontSize: 16,
+    borderRadius: 10, // iOS like rounded corners for inputs
+    fontSize: 17, // iOS body font size
     marginBottom: 10,
-    borderWidth: 1,
+    // borderWidth: 1, // iOS inputs often don't have explicit borders if background is distinct
     // borderColor will be themed
   },
   searchButton: {
@@ -1263,11 +1283,11 @@ const styles = StyleSheet.create({
     padding: 15,
     borderRadius: 25,
     alignItems: 'center',
-    // Adding shadow to the search button
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.23,
-    shadowRadius: 2.62,
+    // iOS buttons often don't have heavy shadows unless they are floating action buttons
+    // shadowColor: '#000',
+    // shadowOffset: { width: 0, height: 2 },
+    // shadowOpacity: 0.23,
+    // shadowRadius: 2.62,
     elevation: 4,
     marginBottom: 10,
   },
@@ -1279,14 +1299,14 @@ const styles = StyleSheet.create({
   realWeatherButton: {
     width: '100%', // Take full width of parent
     padding: 10,
-    borderRadius: 25,
+    borderRadius: 10, // Consistent with input fields
     alignItems: 'center',
-    borderWidth: 1,
+    // borderWidth: 1, // Can be removed if background provides enough contrast
     // borderColor will be themed
   },
   realWeatherButtonText: {
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: 15, // Slightly larger for secondary buttons
+    fontWeight: '600', // Semi-bold for button text
   },
   loadingContainer: {
     alignItems: 'center',
@@ -1317,13 +1337,12 @@ const styles = StyleSheet.create({
   weatherCard: { // Styling for the card displaying weather/prank info
     width: '95%', // Use percentage for responsiveness
     maxWidth: 400, // Max width for larger screens
-    padding: 20, // Adjusted padding for a bit more breathing room
-    borderRadius: 22, // Slightly more rounded corners for iOS feel
-    // Adding some shadow for depth
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 }, // Softer shadow offset
-    shadowOpacity: 0.08, // More subtle shadow opacity
-    shadowRadius: 12, // More diffused shadow
+    padding: 18, 
+    borderRadius: 16, // Common iOS card corner radius
+    shadowColor: 'rgba(0,0,0,0.1)', // Softer, more diffused shadow
+    shadowOffset: { width: 0, height: 4 }, 
+    shadowOpacity: 0.8, // Opacity of the shadow itself
+    shadowRadius: 12, 
     // elevation: 8, // Removing elevation for a more iOS-like shadow (shadow props above work for iOS)
     alignItems: 'center', // Center content within the card
   },
@@ -1345,11 +1364,11 @@ const styles = StyleSheet.create({
     marginRight: 15,
   },
   tempText: {
-    fontSize: 48, // Increased size
+    fontSize: 52, // Larger for prominent temperature display
     fontWeight: 'bold',
   },
   conditionText: {
-    fontSize: 22, // Increased size
+    fontSize: 17, // iOS body size for condition
     marginTop: -5, // Adjust position relative to temp
   },
   extraInfoText: {
@@ -1368,12 +1387,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   detailLabel: {
-    fontSize: 12, // Adjusted for clarity
-    fontWeight: 'bold', // Make labels bolder
+    fontSize: 13, // iOS caption 1 size
+    fontWeight: '500', 
     marginBottom: 5,
   },
   detailValue: {
-    fontSize: 16,
+    fontSize: 17, // iOS body size
   },
   weatherMessage: {
     fontSize: 24, // Larger for impact
@@ -1384,7 +1403,7 @@ const styles = StyleSheet.create({
   forecastTitle: { // Style for the "Weather Forecast for <Location>" text
     fontSize: 17, // Slightly adjusted font size
     textAlign: 'center',
-    marginBottom: 10, // Space before the roast message
+    marginBottom: 8, 
     fontWeight: '500', // Semi-bold
   },
   goCheckOutsideText: { // Style for the "Go Check Outside!" message
@@ -1394,7 +1413,7 @@ const styles = StyleSheet.create({
     marginVertical: 15, // Add some vertical spacing around it
   },
   roastText: {
-    fontSize: 17, // Slightly adjusted font size
+    fontSize: 16, 
     // fontStyle: 'italic', // Removed italic
     fontWeight: '600', // Made it semi-bold
     textAlign: 'center',
@@ -1402,7 +1421,7 @@ const styles = StyleSheet.create({
   },
   nameSign: {
     fontSize: 14,
-    fontStyle: 'italic',
+    // fontStyle: 'italic', // Less common for signatures in iOS UI
     opacity: 0.6, // Further reduced opacity for subtlety
     fontWeight: 'normal', // Ensure it's not unintentionally bold
     alignSelf: 'flex-end', // Align to the right
@@ -1419,7 +1438,7 @@ const styles = StyleSheet.create({
   shareButton: { // Applied to "Share Prank" button
     paddingVertical: 10,
     paddingHorizontal: 15,
-    borderRadius: 25, // Rounded corners
+    borderRadius: 10, // Consistent rounded corners
     flex: 1, // Allow button to take available space
     marginHorizontal: 5, // Space between buttons
     alignItems: 'center',
@@ -1427,13 +1446,13 @@ const styles = StyleSheet.create({
   screenshotButton: { // Applied to "Share Screenshot" button
     paddingVertical: 10,
     paddingHorizontal: 15,
-    borderRadius: 25, // Rounded corners
+    borderRadius: 10, // Consistent rounded corners
     flex: 1, // Allow button to take available space
     marginHorizontal: 5, // Space between buttons
     alignItems: 'center',
   },
   shareButtonText: {
-    color: 'white',
+    color: '#FFFFFF', // Ensure high contrast for button text
     fontWeight: 'bold',
     fontSize: 14,
   },
@@ -1442,19 +1461,19 @@ const styles = StyleSheet.create({
     padding: 20, // Increased padding
     borderRadius: 16, // Updated border radius
     marginTop: 25,
-    borderWidth: 1, // Added border
-    borderColor: '#ccc', // Updated border color
-    backgroundColor: 'rgba(255,255,255,0.9)', // Updated background color
-    shadowColor: '#000', // Updated shadow properties
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    elevation: 6, // Updated elevation
+    // borderWidth: 1, // Often, iOS cards don't have explicit borders if bg is distinct
+    // borderColor: '#ccc', 
+    // backgroundColor: 'rgba(255,255,255,0.9)', // Use themeColors.cardBg or similar
+    shadowColor: 'rgba(0,0,0,0.08)', 
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.8,
+    shadowRadius: 8,
+    // elevation: 6, 
   },
   weatherFactText: {
-    fontSize: 16, // Updated font size
+    fontSize: 15, 
     textAlign: 'center',
-    fontWeight: '500', // Updated font weight
+    fontWeight: '400', // Regular weight for facts
   },
   // Feedback Tab Styles
   emptyStateText: { // Style for the placeholder text
@@ -1471,13 +1490,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
   feedbackTitle: {
-    fontSize: 24,
+    fontSize: 22, // iOS Title 2 size
     fontWeight: 'bold',
     marginBottom: 10,
     textAlign: 'center',
   },
   feedbackDescription: {
-    fontSize: 16,
+    fontSize: 15, // iOS footnote or caption
     marginBottom: 20,
     textAlign: 'center',
     paddingHorizontal: 10,
@@ -1485,22 +1504,22 @@ const styles = StyleSheet.create({
   feedbackInput: { // Common style for both feedback inputs
     width: '100%',
     // height: 150, // Height is now specific to the multiline input
-    borderRadius: 15,
+    borderRadius: 10, // Consistent iOS corner radius
     padding: 15,
-    fontSize: 16,
+    fontSize: 17, // iOS body
     marginBottom: 15, // Space between inputs
-    borderWidth: 1,
+    // borderWidth: 1, // Can be removed if inputBg is distinct
     // borderColor will be themed
   },
   feedbackSubmitButton: {
     width: '100%',
     padding: 15, // Consistent padding
-    borderRadius: 25,
+    borderRadius: 10, // Consistent iOS corner radius
     alignItems: 'center',
     marginTop: 10, // Space above button
   },
   feedbackSubmitButtonText: {
-    color: 'white',
+    color: '#FFFFFF',
     fontWeight: 'bold',
     fontSize: 18,
   },
@@ -1508,7 +1527,7 @@ const styles = StyleSheet.create({
     marginTop: 15,
     fontSize: 16,
     textAlign: 'center',
-    fontStyle: 'italic',
+    // fontStyle: 'italic', // Less common for success messages
   },
   bottomInfoContainer: {
     paddingVertical: 15, // Add some vertical spacing
