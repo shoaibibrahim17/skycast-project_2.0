@@ -264,6 +264,9 @@ const createDialogObjects = (messages, type) => {
 const TRY_MORE_MESSAGES = createDialogObjects(RAW_TRY_MORE_STRINGS, 'tryMore');
 const FEEDBACK_MESSAGES = createDialogObjects(RAW_FEEDBACK_STRINGS, 'feedback');
 
+// --- IMPORTANT: Replace with your actual OpenWeatherMap API key ---
+const OPENWEATHERMAP_API_KEY = 'ee04b5d5d93562ed5906455c42dbeb58';
+
 
 export default function App() {
   
@@ -278,13 +281,13 @@ export default function App() {
   const [currentLoadingMsg, setCurrentLoadingMsg] = useState(LOADING_MESSAGES[0]); 
   const [loadingDots, setLoadingDots] = useState(''); 
   const [dynamicCardBg, setDynamicCardBg] = useState(null); // For dynamic weather card background
-  const [lastRandomRoastIndex, setLastRandomRoastIndex] = useState(-1); 
   const [shuffledWeatherFacts, setShuffledWeatherFacts] = useState([]); 
   const [currentFactIndex, setCurrentFactIndex] = useState(0); 
   const [hasShownTryMoreLocationsPrompt, setHasShownTryMoreLocationsPrompt] = useState(false); 
   const [hasShownFeedbackPrompt, setHasShownFeedbackPrompt] = useState(false); 
   const [prankCount, setPrankCount] = useState(0); 
   const [weatherFact, setWeatherFact] = useState(''); // Added missing weatherFact state
+  const [usedRoastMessages, setUsedRoastMessages] = useState([]); // To track used roast messages
   
   // For non-repeating dialog messages
   const [shuffledTryMoreDialogs, setShuffledTryMoreDialogs] = useState([]);
@@ -297,6 +300,10 @@ export default function App() {
   const [feedbackUserName, setFeedbackUserName] = useState(''); 
   const [feedbackLoading, setFeedbackLoading] = useState(false); 
   const [feedbackSuccess, setFeedbackSuccess] = useState(false); 
+  // New states for real weather
+  const [realWeatherData, setRealWeatherData] = useState(null);
+  const [realWeatherError, setRealWeatherError] = useState(null);
+  const [isShowingRealWeatherView, setIsShowingRealWeatherView] = useState(false);
   // Animated values
   const fadeAnim = useRef(new Animated.Value(0)).current; 
   const slideAnim = useRef(new Animated.Value(50)).current; 
@@ -486,6 +493,9 @@ export default function App() {
     setFakeData(null); 
     setShowRealWeather(false); 
     setDynamicCardBg(null); 
+    setRealWeatherData(null); // Clear previous real weather data
+    setRealWeatherError(null); // Clear previous real weather error
+    setIsShowingRealWeatherView(false); // No longer showing real weather view
 
     const loadingInterval = setInterval(rotateLoadingMessage, 2000); 
 
@@ -581,20 +591,25 @@ export default function App() {
         ];
         randomPranks.push(...newRoasts); // Append the roasts
 
-        let randomIndex;
-        if (randomPranks.length > 1) {
-          do {
-            randomIndex = Math.floor(Math.random() * randomPranks.length);
-          } while (randomIndex === lastRandomRoastIndex);
-        } else if (randomPranks.length === 1) {
-          randomIndex = 0;
-        } else {
-          
-          randomIndex = 0;
+        let availableRoasts = randomPranks.filter(
+          prank => !usedRoastMessages.some(used => used.message === prank.message && used.roast === prank.roast)
+        );
+
+        if (availableRoasts.length === 0 && randomPranks.length > 0) {
+          // All roasts shown, reset and use the full list
+          setUsedRoastMessages([]);
+          availableRoasts = [...randomPranks];
         }
-        setLastRandomRoastIndex(randomIndex);
-        const randomPrank = randomPranks[randomIndex];
-        prankResult = { location, ...randomPrank };
+
+        if (availableRoasts.length > 0) {
+          const randomIndex = Math.floor(Math.random() * availableRoasts.length);
+          const randomPrank = availableRoasts[randomIndex];
+          prankResult = { location, ...randomPrank };
+          setUsedRoastMessages(prevUsed => [...prevUsed, randomPrank]);
+        } else {
+          // Fallback if randomPranks is somehow empty (should not happen with current constants)
+          prankResult = { location, message: "Go Check Outside!", roast: "Looks like we're out of roasts for now!" };
+        }
       }
       
 
@@ -628,6 +643,58 @@ export default function App() {
     } finally {
       setLoading(false);
       clearInterval(loadingInterval); 
+    }
+  };
+
+  // --- Function to fetch real weather data ---
+  const handleFetchRealWeather = async () => {
+    if (!location.trim()) {
+      Alert.alert('Location Required', 'Please enter a location first.');
+      return;
+    }
+    if (OPENWEATHERMAP_API_KEY === 'YOUR_OPENWEATHERMAP_API_KEY') {
+      Alert.alert('API Key Missing', 'Please add your OpenWeatherMap API key in the App.js file.');
+      return;
+    }
+
+    await playClickSound();
+    Keyboard.dismiss();
+    setLoading(true);
+    setResult(null); // Clear prank result
+    setFakeData(null); // Clear fake data
+    setRealWeatherData(null);
+    setRealWeatherError(null);
+    setIsShowingRealWeatherView(true); // Indicate we want to show the real weather view
+
+    try {
+      const response = await fetch(
+        `https://api.openweathermap.org/data/2.5/weather?q=${location}&appid=${OPENWEATHERMAP_API_KEY}&units=metric`
+      );
+      const data = await response.json();
+
+      if (response.ok) {
+        setRealWeatherData({
+          location: data.name,
+          temperature: Math.round(data.main.temp),
+          condition: data.weather[0].main,
+          description: data.weather[0].description,
+          icon: data.weather[0].icon,
+          humidity: data.main.humidity,
+          windSpeed: Math.round(data.wind.speed * 3.6), // m/s to km/h
+          high: Math.round(data.main.temp_max),
+          low: Math.round(data.main.temp_min),
+        });
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } else {
+        setRealWeatherError(data.message || 'Failed to fetch real weather.');
+        Alert.alert('Real Weather Error', data.message || 'Could not fetch real weather data. Please check the location or try again.');
+      }
+    } catch (error) {
+      console.error('Error fetching real weather:', error);
+      setRealWeatherError('An error occurred. Please check your connection.');
+      Alert.alert('Network Error', 'Could not connect to the weather service.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -913,11 +980,8 @@ export default function App() {
 
                     {showRealWeather && (
                       <TouchableOpacity
-                        style={[styles.realWeatherButton, { backgroundColor: themeColors.inputBg, borderColor: themeColors.inputBorder }]}
-                        onPress={async () => {
-                          await playClickSound(); // Ensure click sound plays
-                          Alert.alert('Wait For It...', 'This is still a prank app! 😂\n\n Keep Pranking your friends 😉');
-                        }}
+                        style={[styles.realWeatherButton, { backgroundColor: themeColors.inputBg, borderColor: themeColors.inputBorder, marginTop: 10 }]}
+                        onPress={handleFetchRealWeather} // Call the new function
                         activeOpacity={0.7}
                       >
                         <Text style={[styles.realWeatherButtonText, { color: themeColors.text }]}>Show Real Weather</Text>
@@ -933,6 +997,38 @@ export default function App() {
                         <Text style={[styles.loadingText, { color: themeColors.text }]}>{currentLoadingMsg}{loadingDots}</Text>
                         {/* Added loadingDots here */}
                       </View>
+                    ) : isShowingRealWeatherView && realWeatherData ? (
+                      // Real Weather Data Card
+                      <View style={styles.fakeDataContainer}> {/* Reusing fakeDataContainer style for now */}
+                        <View style={[styles.weatherCard, { backgroundColor: dynamicCardBg || themeColors.cardBg }]}>
+                          <Text style={[styles.locationText, { color: themeColors.text }]}>{realWeatherData.location}</Text>
+                          <View style={styles.mainWeatherRow}>
+                            {/* You might want to map OpenWeatherMap icons to your local assets or use their icon URL */}
+                            <Image
+                              source={
+                                realWeatherData.condition?.includes('Rain') ? require('./assets/rain-icon.png') :
+                                realWeatherData.condition?.includes('Clouds') ? require('./assets/cloudy-icon.png') :
+                                realWeatherData.condition?.includes('Clear') ? require('./assets/sun-icon.png') :
+                                realWeatherData.condition?.includes('Snow') ? require('./assets/snow-icon.png') :
+                                realWeatherData.condition?.includes('Thunderstorm') ? require('./assets/thunder-icon.png') :
+                                require('./assets/wind-icon.png') // Default icon
+                              }
+                              style={styles.weatherIcon}
+                            />
+                            <View>
+                              <Text style={[styles.tempText, { color: themeColors.text }]}>{realWeatherData.temperature}°C</Text>
+                              <Text style={[styles.conditionText, { color: themeColors.subText, textTransform: 'capitalize' }]}>{realWeatherData.description}</Text>
+                            </View>
+                          </View>
+                          <View style={styles.detailsRow}>
+                            <View style={styles.detailItem}><Text style={[styles.detailLabel, { color: themeColors.subText }]}>HUMIDITY</Text><Text style={[styles.detailValue, { color: themeColors.text }]}>{realWeatherData.humidity}%</Text></View>
+                            <View style={styles.detailItem}><Text style={[styles.detailLabel, { color: themeColors.subText }]}>WIND</Text><Text style={[styles.detailValue, { color: themeColors.text }]}>{realWeatherData.windSpeed} km/h</Text></View>
+                            <View style={styles.detailItem}><Text style={[styles.detailLabel, { color: themeColors.subText }]}>HIGH/LOW</Text><Text style={[styles.detailValue, { color: themeColors.text }]}>{realWeatherData.high}°/{realWeatherData.low}°</Text></View>
+                          </View>
+                        </View>
+                      </View>
+                    ) : isShowingRealWeatherView && realWeatherError ? (
+                      <Text style={[styles.emptyStateText, { color: themeColors.accentColor, marginTop: 20 }]}>{realWeatherError}</Text>
                     ) : fakeData ? (
                       // Fake Weather Data Card
                       <View style={styles.fakeDataContainer}>
