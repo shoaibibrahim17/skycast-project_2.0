@@ -24,6 +24,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { Audio } from 'expo-av';
 import * as Sharing from 'expo-sharing';
+import emailjs, { EmailJSResponseStatus } from '@emailjs/react-native'; // Import the EmailJS SDK
 import ViewShot from 'react-native-view-shot';
 
 const { width, height } = Dimensions.get('window');
@@ -303,6 +304,7 @@ export default function App() {
   const factFadeAnim = useRef(new Animated.Value(1)).current; 
   const tabFadeAnim = useRef(new Animated.Value(1)).current; 
 
+  const tryMoreDialogTimeoutRef = useRef(null); // Ref for the "Try More Locations" dialog timeout
   // Ref for ViewShot (screenshot)
   const viewShotRef = useRef();
 
@@ -725,6 +727,13 @@ export default function App() {
       slideAnim.setValue(50);
       scaleAnim.setValue(0.8);
     }
+
+    // Cleanup function for this effect
+    return () => {
+      if (tryMoreDialogTimeoutRef.current) {
+        clearTimeout(tryMoreDialogTimeoutRef.current);
+      }
+    };
   }, [result, fakeData, prankCount, shuffledTryMoreDialogs, currentTryMoreDialogIndex, shuffledFeedbackDialogs, currentFeedbackDialogIndex]); // Added dialog state dependencies
 
 
@@ -756,44 +765,56 @@ export default function App() {
     }
     await playClickSound(); // Await sound
     setFeedbackLoading(true);
+
+    // These are your EmailJS credentials
+    const serviceId = 'service_9et7so9';
+    const templateId = 'template_hddwqhm';
+    const publicKey = 'QIOPECGH-HoMwv4F2'; // This is your User ID / Public Key
+
     const feedbackData = {
       feedback_message: feedbackText.trim(),
       user_name: feedbackUserName.trim() || 'Anonymous SkyC⚡st User',
       submission_date: new Date().toLocaleString(), 
     };
+
     try {
-      
-      const emailJsData = {
-        service_id: 'service_ty9k346S', 
-        template_id: 'template_hddwqhm',       
-        user_id: 'sGTlSc79GW0mB6ocv',          
-        template_params: feedbackData,
-      };
-      const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(emailJsData),
-      });
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`EmailJS Error ${response.status}: ${errorText}`);
+      const response = await emailjs.send(
+        serviceId,
+        templateId,
+        feedbackData, // These are your template_params
+        { publicKey: publicKey } // Pass public key in options object
+      );
+
+      if (response.status === 200) {
+        console.log('Feedback email sent successfully via EmailJS SDK!', response.text);
+
+        // Save to AsyncStorage
+        const existingFeedbacks = await AsyncStorage.getItem('userFeedbacks');
+        const feedbacksArray = existingFeedbacks ? JSON.parse(existingFeedbacks) : [];
+        feedbacksArray.push(feedbackData); // Save the structured feedback
+        await AsyncStorage.setItem('userFeedbacks', JSON.stringify(feedbacksArray));
+
+        setFeedbackSuccess(true);
+        setFeedbackText('');
+        setFeedbackUserName('');
+        Keyboard.dismiss();
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } else {
+        // EmailJS SDK might return a non-200 status on soft failures or if the API itself returns an error handled by the SDK
+        console.error('EmailJS SDK returned non-200 status:', response.status, response.text);
+        Alert.alert('Submission Error', `Failed to send feedback: ${response.text || 'Unknown EmailJS error'}`);
+        setFeedbackSuccess(false);
       }
-      console.log('Feedback email sent successfully via fetch to EmailJS!');
-
-      
-      const existingFeedbacks = await AsyncStorage.getItem('userFeedbacks');
-      const feedbacksArray = existingFeedbacks ? JSON.parse(existingFeedbacks) : [];
-      feedbacksArray.push(feedbackData); // Save the structured feedback
-      await AsyncStorage.setItem('userFeedbacks', JSON.stringify(feedbacksArray));
-
-      setFeedbackSuccess(true);
-      setFeedbackText('');
-      setFeedbackUserName('');
-      Keyboard.dismiss();
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
-      console.error('Full error object during feedback submission:', error);
-      Alert.alert('Submission Error', `Failed to send feedback. ${error.message || 'Please try again.'}`);
+      if (error instanceof EmailJSResponseStatus) {
+        // This catches errors specifically from the EmailJS SDK (e.g., network issues, auth problems detected by SDK)
+        console.error('EmailJS SDK specific error during feedback submission:', error.status, error.text);
+        Alert.alert('Submission Error', `Failed to send feedback. EmailJS Error ${error.status}: ${error.text || 'Please check your EmailJS configuration.'}`);
+      } else {
+        // General errors (e.g., programming errors before the SDK call, or unexpected issues)
+        console.error('General error during feedback submission:', error);
+        Alert.alert('Submission Error', `Failed to send feedback. ${error.message || 'An unexpected error occurred. Please try again.'}`);
+      }
       setFeedbackSuccess(false); // Ensure success is false on error
     } finally {
       setFeedbackLoading(false);
@@ -834,7 +855,7 @@ export default function App() {
         >
           {/* ScrollView nested inside KAV */}
           <ScrollView
-            style={{ flex: 1 }} // ScrollView also takes up available space within KAV
+            style={{ flex: 1 }} 
             contentContainerStyle={{ flexGrow: 1, padding: 20 }} // Allows content to grow and adds padding
             keyboardShouldPersistTaps="handled"
           >
@@ -1001,8 +1022,8 @@ export default function App() {
               ) : (
                 // Feedback Tab Content
                 <View style={styles.feedbackContainer}>
-                  <Text style={[styles.feedbackTitle, { color: themeColors.text }]}>We value your feedback! (Not really)</Text>
-                  <Text style={[styles.feedbackDescription, { color: themeColors.subText }]}>Please let us know your thoughts or suggestions below. Or don't. It's a prank app.</Text>
+                  <Text style={[styles.feedbackTitle, { color: themeColors.text }]}>I value your feedback! (Not really)</Text>
+                  <Text style={[styles.feedbackDescription, { color: themeColors.subText }]}>Please let me know your thoughts or suggestions below.</Text>
                   <TextInput
                     style={[styles.feedbackInput, { backgroundColor: themeColors.inputBg, color: themeColors.text, borderColor: themeColors.inputBorder, height: 50, marginBottom: 10 }]}
                     placeholder="Your Name (Optional)"
@@ -1033,6 +1054,13 @@ export default function App() {
                   {feedbackSuccess && (
                     <Text style={[styles.feedbackSuccessText, { color: themeColors.accentColor }]}>Thank you for your feedback! 🙌 (We're probably not going to read it)</Text>
                   )}
+
+                  {/* Spacer View to push the following content to the bottom */}
+                  <View style={{ flex: 1 }} />
+                  <View style={styles.bottomInfoContainer}>
+                    <Text style={[styles.bottomInfoText, { color: themeColors.subText }]}>SkyC⚡st v1.0</Text>
+                    <Text style={[styles.bottomInfoText, { color: themeColors.subText }]}>Made in Adilabad</Text>
+                  </View>
                 </View>
               )}
             </Animated.View>
@@ -1385,5 +1413,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlign: 'center',
     fontStyle: 'italic',
+  },
+  bottomInfoContainer: {
+    paddingVertical: 15, // Add some vertical spacing
+    alignItems: 'center', // Center the text items
+    width: '100%',       // Ensure it takes full width for centering
+    marginTop: 20,       // Add some space from the content above if no spacer is used or content is short
+  },
+  bottomInfoText: {
+    fontSize: 12,
+    opacity: 0.7,        // Make it a bit muted
+    marginBottom: 4,     // Space between the two lines of text
+    // color will be themed via inline style
   },
 });
