@@ -29,6 +29,7 @@ import * as Sharing from 'expo-sharing';
 import * as Location from 'expo-location'; // Import Location
 import * as StoreReview from 'expo-store-review'; // For app rating
 import ViewShot from 'react-native-view-shot';
+import emailjs from '@emailjs/browser'; // Import EmailJS SDK
 // import { GestureHandlerRootView, PanGestureHandler, State as GestureState } from 'react-native-gesture-handler'; // For swipe gestures
 
 const { width, height } = Dimensions.get('window');
@@ -281,8 +282,14 @@ const createDialogObjects = (messages, type) => {
 const TRY_MORE_MESSAGES = createDialogObjects(RAW_TRY_MORE_STRINGS, 'tryMore');
 const FEEDBACK_MESSAGES = createDialogObjects(RAW_FEEDBACK_STRINGS, 'feedback');
 
+ // --- IMPORTANT: Replace with your actual OpenWeatherMap API key ---
+const OPENWEATHERMAP_API_KEY = 'ee04b5d5d93562ed5906455c42dbeb58'; // Add your API key
 import { BACKEND_URL } from './config'; // Import from your config file
 
+// EmailJS Configuration (Client-Side)
+const EMAILJS_PUBLIC_KEY = 'QIOPECGH-HoMwv4F2';
+const EMAILJS_SERVICE_ID = 'service_9et7so9';
+const EMAILJS_TEMPLATE_ID_FEEDBACK = 'template_hddwqhm';
 
 export default function App() {
   
@@ -827,6 +834,11 @@ const iconMap = { // Map icon filenames to require statements
 
   // --- Function to fetch real weather data ---
   const handleFetchRealWeather = async (searchQuery = location, coordinates = null) => {
+    if (OPENWEATHERMAP_API_KEY === 'YOUR_OPENWEATHERMAP_API_KEY_HERE') {
+      Alert.alert('API Key Missing', 'Please add your OpenWeatherMap API key in the App.js file.');
+      setLoading(false);
+      return;
+    }
     if (!searchQuery?.trim() && !coordinates) {
       Alert.alert('Location Required', 'Please enter a location or use current location.');
       setLoading(false);
@@ -845,62 +857,132 @@ const iconMap = { // Map icon filenames to require statements
     setIsShowingRealWeatherView(true); // Indicate we want to show the real weather view
     setCurrentAppGradient(darkMode ? darkTheme.gradientColors : lightTheme.gradientColors); // Reset gradient
 
+    let lat, lon, displayName;
+
     try {
-      const payload = coordinates ? { coordinates } : { location: searchQuery };
+      if (coordinates) {
+        lat = coordinates.latitude;
+        lon = coordinates.longitude;
+        try {
+          // Reverse geocode to get location name from coordinates
+          console.log("Fetching reverse geocoding data...");
+          const reverseGeoResponse = await fetch(`https://api.openweathermap.org/geo/1.0/reverse?lat=${lat}&lon=${lon}&limit=1&appid=${OPENWEATHERMAP_API_KEY}`);
+          const reverseGeoData = await reverseGeoResponse.json();
+          if (reverseGeoResponse.ok && reverseGeoData.length > 0) {
+            displayName = `${reverseGeoData[0].name}${reverseGeoData[0].country ? ', ' + reverseGeoData[0].country : ''}`;
+            setLocation(displayName); // Update the input field with the fetched location name
+          } else {
+            console.warn("Reverse geocoding failed or returned no data:", reverseGeoData);
+            displayName = "Current Location"; // Fallback
+          }
+        } catch (e) {
+          console.error("Error during reverse geocoding fetch:", e);
+          displayName = "Current Location"; // Fallback on error
+        }
+      } else {
+        // Geocode location name to get lat/lon
+        console.log("Fetching geocoding data for:", searchQuery);
+        const geoResponse = await fetch(
+          `https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(searchQuery)}&limit=1&appid=${OPENWEATHERMAP_API_KEY}`
+        );
+        const geoData = await geoResponse.json();
+        if (!geoResponse.ok || geoData.length === 0) {
+          const errorMsg = (geoData && geoData.message) || `City "${searchQuery}" not found.`;
+          console.error("Geocoding error:", errorMsg, geoData);
+          setRealWeatherError(`Geocoding failed: ${errorMsg}`);
+          Alert.alert('Geocoding Error', `Could not find location: ${searchQuery}. ${errorMsg}`);
+          setLoading(false);
+          return;
+        }
+        lat = geoData[0].lat;
+        lon = geoData[0].lon;
+        displayName = `${geoData[0].name}${geoData[0].country ? ', ' + geoData[0].country : ''}`;
+        // No need to setLocation(displayName) here as user typed it, unless you want to normalize it
+      }
 
-      const response = await fetch(`${BACKEND_URL}/api/weather`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
+      // Fetch weather data from Open-Meteo
+      console.log(`Fetching weather data for lat: ${lat}, lon: ${lon}`);
+      const weatherResponse = await fetch(
+        `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,rain,showers,snowfall,weather_code,cloud_cover,pressure_msl,surface_pressure,wind_speed_10m,wind_direction_10m,wind_gusts_10m&hourly=temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,precipitation_probability,precipitation,rain,showers,snowfall,snow_depth,weather_code,pressure_msl,surface_pressure,cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,visibility,evapotranspiration,et0_fao_evapotranspiration,vapor_pressure_deficit,wind_speed_10m,wind_speed_80m,wind_speed_120m,wind_speed_180m,wind_direction_10m,wind_direction_80m,wind_direction_120m,wind_direction_180m,wind_gusts_10m,temperature_80m,temperature_120m,temperature_180m,soil_temperature_0cm,soil_temperature_6cm,soil_temperature_18cm,soil_temperature_54cm,soil_moisture_0_to_1cm,soil_moisture_1_to_3cm,soil_moisture_3_to_9cm,soil_moisture_9_to_27cm,soil_moisture_27_to_81cm,is_day,cape,freezing_level_height,sunshine_duration,shortwave_radiation,direct_radiation,diffuse_radiation,direct_normal_irradiance,terrestrial_radiation&daily=weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max,apparent_temperature_min,sunrise,sunset,daylight_duration,sunshine_duration,uv_index_max,uv_index_clear_sky_max,precipitation_sum,rain_sum,showers_sum,snowfall_sum,precipitation_hours,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant,shortwave_radiation_sum,et0_fao_evapotranspiration&forecast_days=7&timezone=auto`
+      );
+      const weatherAPIData = await weatherResponse.json();
 
-      const backendResponse = await response.json();
-
-      if (!response.ok) {
-        // If backend returns an error (e.g., 400, 500)
-        const errorMsg = backendResponse.error || `Server error: ${response.status}`;
+      if (!weatherResponse.ok || !weatherAPIData.current || !weatherAPIData.daily) {
+        const errorMsg = weatherAPIData.reason || 'Failed to fetch weather data from Open-Meteo.';
+        console.error("Open-Meteo API error:", errorMsg, weatherAPIData);
         setRealWeatherError(errorMsg);
-        Alert.alert('Error from Backend', errorMsg);
+        Alert.alert('Weather API Error', errorMsg);
         setLoading(false);
         return;
       }
 
-      console.log('Response from backend:', backendResponse);
+      // Process current weather
+      const currentWmoInfo = getWeatherInfoFromWmoCode(weatherAPIData.current.weather_code);
+      const processedRealWeatherData = {
+        location: displayName,
+        temperature: Math.round(weatherAPIData.current.temperature_2m),
+        condition: currentWmoInfo.condition,
+        description: currentWmoInfo.description,
+        iconName: currentWmoInfo.iconName,
+        humidity: weatherAPIData.current.relative_humidity_2m,
+        windSpeed: Math.round(weatherAPIData.current.wind_speed_10m),
+        high: weatherAPIData.daily.temperature_2m_max ? Math.round(weatherAPIData.daily.temperature_2m_max[0]) : 'N/A',
+        low: weatherAPIData.daily.temperature_2m_min ? Math.round(weatherAPIData.daily.temperature_2m_min[0]) : 'N/A',
+        latitude: parseFloat(lat.toFixed(4)),
+        longitude: parseFloat(lon.toFixed(4)),
+      };
+      setRealWeatherData(processedRealWeatherData);
 
-      // Process the full weather data from the backend
-      if (backendResponse.realWeatherData && backendResponse.dailyForecast) {
-        setRealWeatherData(backendResponse.realWeatherData);
-        setDailyForecast(backendResponse.dailyForecast);
+      // Process 7-day forecast
+      const processedDailyForecast = weatherAPIData.daily.time.map((time, index) => {
+        const dayWmoInfo = getWeatherInfoFromWmoCode(weatherAPIData.daily.weather_code[index]);
+        return {
+          dt: new Date(time).getTime() / 1000,
+          dateString: time,
+          temp: {
+            min: Math.round(weatherAPIData.daily.temperature_2m_min[index]),
+            max: Math.round(weatherAPIData.daily.temperature_2m_max[index]),
+          },
+          weather: [{
+            main: dayWmoInfo.condition,
+            description: dayWmoInfo.description,
+            iconName: dayWmoInfo.iconName,
+            id: weatherAPIData.daily.weather_code[index]
+          }],
+          sunrise: weatherAPIData.daily.sunrise[index] ? new Date(weatherAPIData.daily.sunrise[index]).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : 'N/A',
+          sunset: weatherAPIData.daily.sunset[index] ? new Date(weatherAPIData.daily.sunset[index]).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : 'N/A',
+        };
+      });
+      setDailyForecast(processedDailyForecast);
 
-        if (backendResponse.allHourlyForecastData) {
-          setAllHourlyForecastData(backendResponse.allHourlyForecastData);
-        }
+      // Process all hourly forecast data
+      const processedAllHourlyForecastData = weatherAPIData.hourly.time.map((timeISO, index) => {
+        const date = new Date(timeISO);
+        const hourWmoInfo = getWeatherInfoFromWmoCode(weatherAPIData.hourly.weather_code[index]);
+        return {
+          dt: date.getTime() / 1000,
+          datePart: date.toISOString().split('T')[0],
+          hourPart: date.toLocaleTimeString([], { hour: 'numeric', hour12: true }),
+          temp: Math.round(weatherAPIData.hourly.temperature_2m[index]),
+          condition: hourWmoInfo.condition,
+          iconName: hourWmoInfo.iconName,
+          precipitation_probability: weatherAPIData.hourly.precipitation_probability ? weatherAPIData.hourly.precipitation_probability[index] : null,
+        };
+      });
+      setAllHourlyForecastData(processedAllHourlyForecastData);
 
-        // Update location input field if backend provided a refined display name
-        // (e.g., from reverse geocoding or direct geocoding)
-        if (backendResponse.realWeatherData.location) {
-          setLocation(backendResponse.realWeatherData.location);
-        }
+      const newFetchCount = successfulRealWeatherFetches + 1;
+      setSuccessfulRealWeatherFetches(newFetchCount);
+      await AsyncStorage.setItem('successfulRealWeatherFetches', newFetchCount.toString());
+      checkAndRequestReview(newFetchCount);
 
-        const newFetchCount = successfulRealWeatherFetches + 1;
-        setSuccessfulRealWeatherFetches(newFetchCount);
-        await AsyncStorage.setItem('successfulRealWeatherFetches', newFetchCount.toString());
-        checkAndRequestReview(newFetchCount);
-
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      } else {
-        // This case handles if the backend response is OK (200) but doesn't have the expected data.
-        const errorMsg = backendResponse.error || 'Backend returned incomplete weather data.';
-        setRealWeatherError(errorMsg);
-        Alert.alert('Backend Data Error', errorMsg);
-      }
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
     } catch (error) {
-      console.error('Error fetching real weather from backend:', error);
-      setRealWeatherError('An error occurred. Please check your connection to the backend.');
-      Alert.alert('Network Error', `Could not connect to the backend server at ${BACKEND_URL}. Is it running?`);
+      // Log the full error object to see more details if it's a TypeError or other network-related issue
+      console.error('Detailed error in handleFetchRealWeather:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
+      setRealWeatherError(`Network or API error: ${error.message || 'Please check connection.'}`);
+      Alert.alert('Fetch Error', `Could not fetch weather data. ${error.message || 'Please check your internet connection and try again.'}`);
     } finally {
       setLoading(false);
     }
@@ -1112,46 +1194,58 @@ const iconMap = { // Map icon filenames to require statements
     setFeedbackLoading(true);
 
     const feedbackPayload = {
+      // Match the placeholders in your HTML email template
       feedback_message: feedbackText.trim(),
       user_name: feedbackUserName.trim() || 'Anonymous SkyC⚡st User',
-      // submission_date will be added by the backend
+      submission_date: new Date().toLocaleString(), // Client-side timestamp
+      // Add location to match the updated HTML template
+      location: location || 'Not specified', 
     };
 
     try {
-      const response = await fetch(`${BACKEND_URL}/api/send-feedback`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(feedbackPayload),
-      });
-
-      const responseData = await response.json();
-
-      if (response.ok && responseData.success) {
-        console.log('Feedback sent successfully via backend:', responseData.message);
-
-        // Save to AsyncStorage
-        const existingFeedbacks = await AsyncStorage.getItem('userFeedbacks');
-        const feedbacksArray = existingFeedbacks ? JSON.parse(existingFeedbacks) : [];
-        // Save the payload sent, backend adds submission_date
-        feedbacksArray.push({ ...feedbackPayload, submission_date: new Date().toLocaleString() });
-        await AsyncStorage.setItem('userFeedbacks', JSON.stringify(feedbacksArray));
-
-        setFeedbackSuccess(true);
-        setFeedbackText('');
-        setFeedbackUserName('');
-        Keyboard.dismiss();
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        Alert.alert('Feedback Sent!', responseData.message || 'Your feedback has been submitted.');
-      } else {
-        console.error('Failed to send feedback via backend:', responseData.error || response.status);
-        Alert.alert('Submission Error', responseData.error || `Failed to send feedback. Server responded with ${response.status}`);
-        setFeedbackSuccess(false);
+      // Mock global.location if it doesn't exist, as EmailJS SDK might expect it.
+      // @emailjs/browser is designed for browsers and might try to access window.location or global.location.
+      if (typeof global.location === 'undefined') {
+        console.log("Mocking global.location for EmailJS SDK");
+        global.location = {
+          href: 'app://skycast.feedback', // Dummy href
+          protocol: 'app:', // Dummy protocol
+        };
       }
+      // Initialize EmailJS with your Public Key if you haven't done it globally
+      // emailjs.init(EMAILJS_PUBLIC_KEY); // Usually done once, but can be here too.
+      // It's often better to call init once when the app loads if you use it in multiple places.
+      // For this specific case, it's fine here or outside the function.
+
+      const emailJsResponse = await emailjs.send(
+        EMAILJS_SERVICE_ID,
+        EMAILJS_TEMPLATE_ID_FEEDBACK,
+        feedbackPayload,
+        EMAILJS_PUBLIC_KEY // Pass public key here or initialize once with emailjs.init()
+      );
+
+      console.log('EmailJS SUCCESS!', emailJsResponse.status, emailJsResponse.text);
+
+      // Save to AsyncStorage
+      const existingFeedbacks = await AsyncStorage.getItem('userFeedbacks');
+      const feedbacksArray = existingFeedbacks ? JSON.parse(existingFeedbacks) : [];
+      feedbacksArray.push({ ...feedbackPayload, submission_date: new Date().toLocaleString(), status: 'Sent via EmailJS Client' });
+      await AsyncStorage.setItem('userFeedbacks', JSON.stringify(feedbacksArray));
+
+      setFeedbackSuccess(true);
+      setFeedbackText('');
+      setFeedbackUserName('');
+      Keyboard.dismiss();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert('Feedback Sent!', 'Your valuable feedback has been submitted. (Probably)');
+
     } catch (error) {
-      console.error('Error submitting feedback to backend:', error);
-      Alert.alert('Submission Error', `An error occurred while sending feedback: ${error.message || 'Please check your connection and try again.'}`);
+      // Log the full error object to understand its structure, especially for SDK-specific errors
+      console.error('EmailJS FAILED (full error object):', JSON.stringify(error, Object.getOwnPropertyNames(error)));
+      // Also log the raw error in case stringify misses something or it's not a plain object
+      console.error('EmailJS FAILED (raw error instance):', error);
+      const errorMessage = (error && (error.text || error.message || (typeof error === 'object' ? JSON.stringify(error) : error.toString()))) || 'Unknown error. Please check your connection and try again.';
+      Alert.alert('Submission Error', `Oops! Couldn't send your feedback. Error: ${errorMessage}`);
       setFeedbackSuccess(false); // Ensure success is false on error
     } finally {
       setFeedbackLoading(false);
