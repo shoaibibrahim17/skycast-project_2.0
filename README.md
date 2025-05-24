@@ -127,11 +127,10 @@ Please ensure your code follows the existing style and that you've tested your c
 
 ## License 📜
 
-This project is distributed under the MIT License. See `LICENSE` for more information. (You'll need to add a `LICENSE` file with the MIT license text if you want this).
+This project is distributed under the MIT License. See `LICENSE` for more information.
 
 ## Acknowledgements 🙏
 
 *   To all the weather APIs that tolerate our shenanigans.
 *   To coffee, the true MVP of this project.
 *   To you, for checking out SkyC⚡st! May your skies be... interesting.
-
