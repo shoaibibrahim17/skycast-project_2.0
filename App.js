@@ -1136,26 +1136,28 @@ const iconMap = { // Map icon filenames to require statements
     await playClickSound(); 
 
     // Fade out the current tab content
-    Animated.timing(tabFadeAnim, {
+    Animated.timing(tabFadeAnim, { // FADE OUT
       toValue: 0,
-      duration: 150, // A bit faster fade-out
+      duration: 200, 
       easing: Easing.inOut(Easing.ease),
       useNativeDriver: true,
     }).start(() => {
-      // Update the active tab state *after* the fade-out is complete
-      // This ensures the old content is fully transparent before the new content is rendered
-      setActiveTab(tabName);
-
-      // Use requestAnimationFrame to ensure the UI has updated with the new activeTab
-      // before starting the fade-in. This can help prevent flickering.
+      // This callback executes after the fade-out animation completes.
+      // Use a minimal timeout or requestAnimationFrame to ensure the state update
+      // for activeTab is processed before starting the fade-in.
+      // This can be more robust in preventing flickering.
       requestAnimationFrame(() => {
-        // Fade in the new tab content
-        Animated.timing(tabFadeAnim, {
-          toValue: 1,
-          duration: 200, // A corresponding fade-in duration
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }).start();
+        setActiveTab(tabName); 
+        // Another requestAnimationFrame to ensure the new content is rendered
+        // before its opacity is animated.
+        requestAnimationFrame(() => {
+          Animated.timing(tabFadeAnim, { // FADE IN
+            toValue: 1,
+            duration: 200, 
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }).start();
+        });
       });
     });
   };
