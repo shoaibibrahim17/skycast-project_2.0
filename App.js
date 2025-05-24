@@ -26,7 +26,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { Audio } from 'expo-av';
 import * as Sharing from 'expo-sharing';
-import emailjs, { EmailJSResponseStatus } from '@emailjs/react-native'; // Import the EmailJS SDK
 import * as Location from 'expo-location'; // Import Location
 import * as StoreReview from 'expo-store-review'; // For app rating
 import ViewShot from 'react-native-view-shot';
@@ -282,8 +281,7 @@ const createDialogObjects = (messages, type) => {
 const TRY_MORE_MESSAGES = createDialogObjects(RAW_TRY_MORE_STRINGS, 'tryMore');
 const FEEDBACK_MESSAGES = createDialogObjects(RAW_FEEDBACK_STRINGS, 'feedback');
 
-// --- IMPORTANT: Replace with your actual OpenWeatherMap API key ---
-const OPENWEATHERMAP_API_KEY = 'ee04b5d5d93562ed5906455c42dbeb58';
+import { BACKEND_URL } from './config'; // Import from your config file
 
 
 export default function App() {
@@ -829,12 +827,7 @@ const iconMap = { // Map icon filenames to require statements
 
   // --- Function to fetch real weather data ---
   const handleFetchRealWeather = async (searchQuery = location, coordinates = null) => {
-    if (OPENWEATHERMAP_API_KEY === 'YOUR_OPENWEATHERMAP_API_KEY') {
-      Alert.alert('API Key Missing', 'Please add your OpenWeatherMap API key in the App.js file.');
-      setLoading(false);
-      return;
-    }
-    if (!searchQuery && !coordinates) {
+    if (!searchQuery?.trim() && !coordinates) {
       Alert.alert('Location Required', 'Please enter a location or use current location.');
       setLoading(false);
       return;
@@ -852,117 +845,62 @@ const iconMap = { // Map icon filenames to require statements
     setIsShowingRealWeatherView(true); // Indicate we want to show the real weather view
     setCurrentAppGradient(darkMode ? darkTheme.gradientColors : lightTheme.gradientColors); // Reset gradient
 
-    let lat, lon, displayName;
-
     try {
-      if (coordinates) {
-        lat = coordinates.latitude;
-        lon = coordinates.longitude;
-        try {
-          const reverseGeoResponse = await fetch(`http://api.openweathermap.org/geo/1.0/reverse?lat=${lat}&lon=${lon}&limit=1&appid=${OPENWEATHERMAP_API_KEY}`);
-          const reverseGeoData = await reverseGeoResponse.json();
-          if (reverseGeoResponse.ok && reverseGeoData.length > 0) {
-            displayName = `${reverseGeoData[0].name}${reverseGeoData[0].country ? ', ' + reverseGeoData[0].country : ''}`;
-            setLocation(displayName); // Update the input field with the fetched location name
-          } else {
-            displayName = "Current Location";
-          }
-        } catch (e) {
-          console.error("Reverse geocoding error:", e);
-          displayName = "Current Location";
-        }
-      } else {
-        const geoResponse = await fetch(
-          `http://api.openweathermap.org/geo/1.0/direct?q=${searchQuery}&limit=1&appid=${OPENWEATHERMAP_API_KEY}`
-        );
-        const geoData = await geoResponse.json();
-        if (!geoResponse.ok || geoData.length === 0) {
-          const errorMsg = (geoData && geoData.message) || 'City not found.';
-          setRealWeatherError(errorMsg);
-          Alert.alert('Geocoding Error', errorMsg);
-          setLoading(false);
-          return;
-        }
-        lat = geoData[0].lat;
-        lon = geoData[0].lon;
-        displayName = `${geoData[0].name}${geoData[0].country ? ', ' + geoData[0].country : ''}`;
+      const payload = coordinates ? { coordinates } : { location: searchQuery };
+
+      const response = await fetch(`${BACKEND_URL}/api/weather`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const backendResponse = await response.json();
+
+      if (!response.ok) {
+        // If backend returns an error (e.g., 400, 500)
+        const errorMsg = backendResponse.error || `Server error: ${response.status}`;
+        setRealWeatherError(errorMsg);
+        Alert.alert('Error from Backend', errorMsg);
+        setLoading(false);
+        return;
       }
 
-      // Step 2: Fetch weather data from Open-Meteo
-      const openMeteoUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset&hourly=temperature_2m,relative_humidity_2m,precipitation_probability,weather_code,wind_speed_10m&timezone=auto&forecast_days=7`;
-      const weatherResponse = await fetch(openMeteoUrl);
-      const weatherData = await weatherResponse.json();
+      console.log('Response from backend:', backendResponse);
 
-      if (weatherResponse.ok && weatherData.current && weatherData.daily) {
-        const currentWmoInfo = getWeatherInfoFromWmoCode(weatherData.current.weather_code);
-        
-        setRealWeatherData({
-          location: displayName,
-          latitude: lat, // Store for potential refresh
-          longitude: lon, // Store for potential refresh
-          temperature: Math.round(weatherData.current.temperature_2m),
-          condition: currentWmoInfo.condition, // Main condition text
-          description: currentWmoInfo.description, // Detailed description
-          iconName: currentWmoInfo.iconName, // Icon filename for local assets
-          humidity: weatherData.current.relative_humidity_2m,
-          windSpeed: Math.round(weatherData.current.wind_speed_10m), // Already in km/h
-          high: Math.round(weatherData.daily.temperature_2m_max[0]), // Today's high
-          low: Math.round(weatherData.daily.temperature_2m_min[0]),   // Today's low
-        });
+      // Process the full weather data from the backend
+      if (backendResponse.realWeatherData && backendResponse.dailyForecast) {
+        setRealWeatherData(backendResponse.realWeatherData);
+        setDailyForecast(backendResponse.dailyForecast);
 
-        const forecast = weatherData.daily.time.map((time, index) => {
-          const dailyWmoInfo = getWeatherInfoFromWmoCode(weatherData.daily.weather_code[index]);
-          return {
-            dateString: time, // Keep the date string for filtering hourly data
-            dt: new Date(time + "T00:00:00").getTime() / 1000, // Unix timestamp for start of day
-            temp: {
-              max: Math.round(weatherData.daily.temperature_2m_max[index]),
-              min: Math.round(weatherData.daily.temperature_2m_min[index]),
-            },
-            weather: [{ // Keep similar structure for UI compatibility
-              main: dailyWmoInfo.condition,
-              description: dailyWmoInfo.description,
-              iconName: dailyWmoInfo.iconName, // Icon filename
-            }],
-            sunrise: weatherData.daily.sunrise[index] ? new Date(weatherData.daily.sunrise[index]).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : 'N/A',
-            sunset: weatherData.daily.sunset[index] ? new Date(weatherData.daily.sunset[index]).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : 'N/A',
-          };
-        }).slice(0, 7); // Ensure 7 days
-        setDailyForecast(forecast);
-
-        // Process and store all hourly data
-        if (weatherData.hourly && weatherData.hourly.time) {
-          const hourlyProcessed = weatherData.hourly.time.map((timeISO, index) => {
-            const hourlyWmoInfo = getWeatherInfoFromWmoCode(weatherData.hourly.weather_code[index]);
-            return {
-              timeISO: timeISO, // Full ISO string "YYYY-MM-DDTHH:MM"
-              datePart: timeISO.split('T')[0], // "YYYY-MM-DD"
-              hourPart: timeISO.split('T')[1], // "HH:MM"
-              temp: Math.round(weatherData.hourly.temperature_2m[index]),
-              humidity: weatherData.hourly.relative_humidity_2m[index],
-              precipitation_probability: weatherData.hourly.precipitation_probability[index],
-              wind_speed: Math.round(weatherData.hourly.wind_speed_10m[index]),
-              iconName: hourlyWmoInfo.iconName,
-              condition: hourlyWmoInfo.condition,
-            };
-          });
-          setAllHourlyForecastData(hourlyProcessed);
+        if (backendResponse.allHourlyForecastData) {
+          setAllHourlyForecastData(backendResponse.allHourlyForecastData);
         }
-        // Increment successful fetches and check for review prompt
+
+        // Update location input field if backend provided a refined display name
+        // (e.g., from reverse geocoding or direct geocoding)
+        if (backendResponse.realWeatherData.location) {
+          setLocation(backendResponse.realWeatherData.location);
+        }
+
         const newFetchCount = successfulRealWeatherFetches + 1;
         setSuccessfulRealWeatherFetches(newFetchCount);
         await AsyncStorage.setItem('successfulRealWeatherFetches', newFetchCount.toString());
-        checkAndRequestReview(newFetchCount); // Check if it's time to ask for a review
+        checkAndRequestReview(newFetchCount);
+
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } else {
-        const errorMsg = weatherData.reason || 'Failed to fetch weather data from Open-Meteo.';
+        // This case handles if the backend response is OK (200) but doesn't have the expected data.
+        const errorMsg = backendResponse.error || 'Backend returned incomplete weather data.';
         setRealWeatherError(errorMsg);
-        Alert.alert('Weather API Error', errorMsg);
+        Alert.alert('Backend Data Error', errorMsg);
       }
+
     } catch (error) {
-      console.error('Error fetching real weather:', error);
-      setRealWeatherError('An error occurred. Please check your connection.');
-      Alert.alert('Network Error', 'Could not connect to the weather service.');
+      console.error('Error fetching real weather from backend:', error);
+      setRealWeatherError('An error occurred. Please check your connection to the backend.');
+      Alert.alert('Network Error', `Could not connect to the backend server at ${BACKEND_URL}. Is it running?`);
     } finally {
       setLoading(false);
     }
@@ -983,7 +921,8 @@ const iconMap = { // Map icon filenames to require statements
     }
     try {
         let { coords } = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        await handleFetchRealWeather(null, coords); // Pass null for searchQuery, and coords
+        // The handleFetchRealWeather function now sends coordinates to the backend
+        await handleFetchRealWeather(null, coords);
     } catch (error) {
         console.error("Error getting current location or weather:", error);
         Alert.alert("Error", "Could not fetch weather for current location. Ensure GPS is enabled.");
@@ -994,18 +933,19 @@ const iconMap = { // Map icon filenames to require statements
   const onRefresh = React.useCallback(async () => {
     setRefreshing(true);
     await playClickSound();
+    // The backend will handle geocoding if only location string is available,
+    // or use coordinates if available from previous realWeatherData.
     if (isShowingRealWeatherView && realWeatherData && typeof realWeatherData.latitude === 'number' && typeof realWeatherData.longitude === 'number') {
       await handleFetchRealWeather(null, { latitude: realWeatherData.latitude, longitude: realWeatherData.longitude });
-    } else if (location.trim()) { // Fallback to last searched text if no coords available
+    } else if (location.trim()) {
       await handleFetchRealWeather(location);
     } else {
-      // Optionally, try to fetch for current location if no other info is available
-      // await fetchWeatherForCurrentLocation(); 
-      // Or simply do nothing if no location context
       console.log("No location available to refresh.");
+      // Optionally, you could try to fetch for current location if desired:
+      // await fetchWeatherForCurrentLocation();
     }
     setRefreshing(false);
-  }, [isShowingRealWeatherView, realWeatherData, location]); // Add dependencies
+  }, [isShowingRealWeatherView, realWeatherData, location]); // Dependencies
 
   const handleShareRealWeather = async () => { /* ... implementation ... */ };
 
@@ -1171,32 +1111,31 @@ const iconMap = { // Map icon filenames to require statements
     await playClickSound(); // Await sound
     setFeedbackLoading(true);
 
-    // These are your EmailJS credentials
-    const serviceId = 'service_9et7so9';
-    const templateId = 'template_hddwqhm';
-    const publicKey = 'QIOPECGH-HoMwv4F2'; // This is your User ID / Public Key
-
-    const feedbackData = {
+    const feedbackPayload = {
       feedback_message: feedbackText.trim(),
       user_name: feedbackUserName.trim() || 'Anonymous SkyC⚡st User',
-      submission_date: new Date().toLocaleString(), 
+      // submission_date will be added by the backend
     };
 
     try {
-      const response = await emailjs.send(
-        serviceId,
-        templateId,
-        feedbackData, // These are your template_params
-        { publicKey: publicKey } // Pass public key in options object
-      );
+      const response = await fetch(`${BACKEND_URL}/api/send-feedback`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(feedbackPayload),
+      });
 
-      if (response.status === 200) {
-        console.log('Feedback email sent successfully via EmailJS SDK!', response.text);
+      const responseData = await response.json();
+
+      if (response.ok && responseData.success) {
+        console.log('Feedback sent successfully via backend:', responseData.message);
 
         // Save to AsyncStorage
         const existingFeedbacks = await AsyncStorage.getItem('userFeedbacks');
         const feedbacksArray = existingFeedbacks ? JSON.parse(existingFeedbacks) : [];
-        feedbacksArray.push(feedbackData); // Save the structured feedback
+        // Save the payload sent, backend adds submission_date
+        feedbacksArray.push({ ...feedbackPayload, submission_date: new Date().toLocaleString() });
         await AsyncStorage.setItem('userFeedbacks', JSON.stringify(feedbacksArray));
 
         setFeedbackSuccess(true);
@@ -1204,22 +1143,15 @@ const iconMap = { // Map icon filenames to require statements
         setFeedbackUserName('');
         Keyboard.dismiss();
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert('Feedback Sent!', responseData.message || 'Your feedback has been submitted.');
       } else {
-        // EmailJS SDK might return a non-200 status on soft failures or if the API itself returns an error handled by the SDK
-        console.error('EmailJS SDK returned non-200 status:', response.status, response.text);
-        Alert.alert('Submission Error', `Failed to send feedback: ${response.text || 'Unknown EmailJS error'}`);
+        console.error('Failed to send feedback via backend:', responseData.error || response.status);
+        Alert.alert('Submission Error', responseData.error || `Failed to send feedback. Server responded with ${response.status}`);
         setFeedbackSuccess(false);
       }
     } catch (error) {
-      if (error instanceof EmailJSResponseStatus) {
-        // This catches errors specifically from the EmailJS SDK (e.g., network issues, auth problems detected by SDK)
-        console.error('EmailJS SDK specific error during feedback submission:', error.status, error.text);
-        Alert.alert('Submission Error', `Failed to send feedback. EmailJS Error ${error.status}: ${error.text || 'Please check your EmailJS configuration.'}`);
-      } else {
-        // General errors (e.g., programming errors before the SDK call, or unexpected issues)
-        console.error('General error during feedback submission:', error);
-        Alert.alert('Submission Error', `Failed to send feedback. ${error.message || 'An unexpected error occurred. Please try again.'}`);
-      }
+      console.error('Error submitting feedback to backend:', error);
+      Alert.alert('Submission Error', `An error occurred while sending feedback: ${error.message || 'Please check your connection and try again.'}`);
       setFeedbackSuccess(false); // Ensure success is false on error
     } finally {
       setFeedbackLoading(false);
@@ -1377,7 +1309,7 @@ const iconMap = { // Map icon filenames to require statements
                                 <Animated.Text style={[styles.loadingDot, { color: themeColors.text, opacity: dot3Opacity }]}>.</Animated.Text>
                               </View>
                             </View>
-                          ) : isShowingRealWeatherView && realWeatherData ? (
+                          ) : isShowingRealWeatherView && realWeatherData && realWeatherData.temperature !== "N/A" ? ( // Check if real data is substantial
                             <View style={styles.fakeDataContainer}> 
                               <View style={[styles.weatherCard, { backgroundColor: themeColors.cardBg }]}> 
                                 {!loading && ( 
@@ -1433,7 +1365,11 @@ const iconMap = { // Map icon filenames to require statements
                                 )}
                               </View>
                             </View>
-                          ) : isShowingRealWeatherView && realWeatherError ? (
+                          ) : isShowingRealWeatherView && realWeatherData && realWeatherData.temperature === "N/A" ? ( // Placeholder for backend test
+                            <Text style={[styles.emptyStateText, { color: themeColors.text, marginTop: 20 }]}>
+                              {realWeatherData.description || "Testing backend connection..."}
+                            </Text>
+                          ) : isShowingRealWeatherView && realWeatherError ? ( // Actual error from backend attempt
                             <Text style={[styles.emptyStateText, { color: themeColors.accentColor, marginTop: 20 }]}>{realWeatherError}</Text>
                           ) : fakeData ? (
                             <View style={styles.fakeDataContainer}>
