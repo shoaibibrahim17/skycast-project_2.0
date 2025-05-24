@@ -17,6 +17,8 @@ import {
   Dimensions,
   Switch,
   Keyboard,
+  RefreshControl, // Added for pull-to-refresh
+  Modal, // Import Modal
   Easing, // Import Easing for animated effects
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -25,7 +27,10 @@ import * as Haptics from 'expo-haptics';
 import { Audio } from 'expo-av';
 import * as Sharing from 'expo-sharing';
 import emailjs, { EmailJSResponseStatus } from '@emailjs/react-native'; // Import the EmailJS SDK
+import * as Location from 'expo-location'; // Import Location
+import * as StoreReview from 'expo-store-review'; // For app rating
 import ViewShot from 'react-native-view-shot';
+// import { GestureHandlerRootView, PanGestureHandler, State as GestureState } from 'react-native-gesture-handler'; // For swipe gestures
 
 const { width, height } = Dimensions.get('window');
 
@@ -313,24 +318,97 @@ export default function App() {
   const [feedbackUserName, setFeedbackUserName] = useState(''); 
   const [feedbackLoading, setFeedbackLoading] = useState(false); 
   const [feedbackSuccess, setFeedbackSuccess] = useState(false); 
+  const [dailyForecast, setDailyForecast] = useState([]); // For 7-day forecast
   // New states for real weather
   const [realWeatherData, setRealWeatherData] = useState(null);
   const [realWeatherError, setRealWeatherError] = useState(null);
+  const [allHourlyForecastData, setAllHourlyForecastData] = useState([]); // To store all hourly data from API
   const [isShowingRealWeatherView, setIsShowingRealWeatherView] = useState(false);
+  // State for Daily Forecast Modal
+  const [isForecastModalVisible, setIsForecastModalVisible] = useState(false);
+  const [selectedForecastDayData, setSelectedForecastDayData] = useState(null);
+  const [refreshing, setRefreshing] = useState(false); // State for RefreshControl
+  const [successfulRealWeatherFetches, setSuccessfulRealWeatherFetches] = useState(0); // For rate prompt
+  const [currentAppGradient, setCurrentAppGradient] = useState(lightTheme.gradientColors); // For dynamic gradients
+
+
   // Animated values
   const fadeAnim = useRef(new Animated.Value(0)).current; 
   const slideAnim = useRef(new Animated.Value(50)).current; 
   const scaleAnim = useRef(new Animated.Value(0.8)).current; 
+  const rotateLogoAnim = useRef(new Animated.Value(0)).current; // For logo animation
   const factFadeAnim = useRef(new Animated.Value(1)).current; 
   const tabFadeAnim = useRef(new Animated.Value(1)).current; 
+  const dot1Opacity = useRef(new Animated.Value(0.3)).current; // For loading dots
+  const dot2Opacity = useRef(new Animated.Value(0.3)).current;
+  const dot3Opacity = useRef(new Animated.Value(0.3)).current;
+  const forecastItemAnims = useRef( // For forecast item entrance animation
+    Array(7).fill(null).map(() => ({
+      opacity: new Animated.Value(0),
+      translateY: new Animated.Value(20),
+    }))
+  ).current;
+  // const tabSlideAnimY = useRef(new Animated.Value(0)).current; // Removing slide animation for simplicity
 
   const tryMoreDialogTimeoutRef = useRef(null); // Ref for the "Try More Locations" dialog timeout
   // Ref for ViewShot (screenshot)
   const viewShotRef = useRef();
 
+  // Helper function to get day of the week from a timestamp
+const getDayOfWeek = (timestamp) => {
+  const date = new Date(timestamp * 1000);
+  return date.toLocaleDateString('en-US', { weekday: 'short' }); // e.g., "Mon"
+};
+
+// Helper function to interpret WMO codes from Open-Meteo
+const getWeatherInfoFromWmoCode = (code) => {
+  const wmoMap = {
+    0: { condition: "Clear sky", iconName: "sun-icon.png", description: "Clear sky" },
+    1: { condition: "Mainly clear", iconName: "sun-icon.png", description: "Mainly clear" },
+    2: { condition: "Partly cloudy", iconName: "cloudy-icon.png", description: "Partly cloudy" },
+    3: { condition: "Overcast", iconName: "cloudy-icon.png", description: "Overcast" },
+    45: { condition: "Fog", iconName: "wind-icon.png", description: "Fog" }, // Using wind as placeholder for fog
+    48: { condition: "Rime fog", iconName: "wind-icon.png", description: "Depositing rime fog" },
+    51: { condition: "Light drizzle", iconName: "rain-icon.png", description: "Light drizzle" },
+    53: { condition: "Moderate drizzle", iconName: "rain-icon.png", description: "Moderate drizzle" },
+    55: { condition: "Dense drizzle", iconName: "rain-icon.png", description: "Dense drizzle" },
+    56: { condition: "Light freezing drizzle", iconName: "snow-icon.png", description: "Light freezing drizzle" },
+    57: { condition: "Dense freezing drizzle", iconName: "snow-icon.png", description: "Dense freezing drizzle" },
+    61: { condition: "Slight rain", iconName: "rain-icon.png", description: "Slight rain" },
+    63: { condition: "Moderate rain", iconName: "rain-icon.png", description: "Moderate rain" },
+    65: { condition: "Heavy rain", iconName: "rain-icon.png", description: "Heavy rain" },
+    66: { condition: "Light freezing rain", iconName: "snow-icon.png", description: "Light freezing rain" },
+    67: { condition: "Heavy freezing rain", iconName: "snow-icon.png", description: "Heavy freezing rain" },
+    71: { condition: "Slight snow fall", iconName: "snow-icon.png", description: "Slight snow fall" },
+    73: { condition: "Moderate snow fall", iconName: "snow-icon.png", description: "Moderate snow fall" },
+    75: { condition: "Heavy snow fall", iconName: "snow-icon.png", description: "Heavy snow fall" },
+    77: { condition: "Snow grains", iconName: "snow-icon.png", description: "Snow grains" },
+    80: { condition: "Slight rain showers", iconName: "rain-icon.png", description: "Slight rain showers" },
+    81: { condition: "Moderate rain showers", iconName: "rain-icon.png", description: "Moderate rain showers" },
+    82: { condition: "Violent rain showers", iconName: "rain-icon.png", description: "Violent rain showers" },
+    85: { condition: "Slight snow showers", iconName: "snow-icon.png", description: "Slight snow showers" },
+    86: { condition: "Heavy snow showers", iconName: "snow-icon.png", description: "Heavy snow showers" },
+    95: { condition: "Thunderstorm", iconName: "thunder-icon.png", description: "Thunderstorm" },
+    96: { condition: "Thunderstorm, slight hail", iconName: "thunder-icon.png", description: "Thunderstorm with slight hail" },
+    99: { condition: "Thunderstorm, heavy hail", iconName: "thunder-icon.png", description: "Thunderstorm with heavy hail" },
+  };
+  return wmoMap[code] || { condition: "Unknown", iconName: "wind-icon.png", description: "Weather data unavailable" };
+};
+
+const iconMap = { // Map icon filenames to require statements
+  'sun-icon.png': require('./assets/sun-icon.png'),
+  'cloudy-icon.png': require('./assets/cloudy-icon.png'),
+  'rain-icon.png': require('./assets/rain-icon.png'),
+  'snow-icon.png': require('./assets/snow-icon.png'),
+  'thunder-icon.png': require('./assets/thunder-icon.png'),
+  'wind-icon.png': require('./assets/wind-icon.png'), // Default / Fog
+  'bifrost-icon.png': require('./assets/bifrost-icon.png'), // For fake data
+  'quantum-icon.png': require('./assets/quantum-icon.png'), // For fake data
+};
   // --- Effects ---
   useEffect(() => {
     loadSettings(); // Load user preferences (dark mode)
+    loadReviewRelatedData(); // Load data for rate prompt
 
     // Set initial subtitle and weather fact
     const initialSubtitleIndex = Math.floor(Math.random() * SUBTITLES.length);
@@ -348,6 +426,7 @@ export default function App() {
 
   // Effect for initializing and shuffling weather facts
   useEffect(() => {
+    // const factSlideAnimY = new Animated.Value(0); // Removed for simpler fact animation
     const initialShuffledFacts = shuffleArray(WEATHER_FACTS);
     setShuffledWeatherFacts(initialShuffledFacts);
     if (initialShuffledFacts.length > 0) {
@@ -355,7 +434,9 @@ export default function App() {
       setCurrentFactIndex(1); // Next fact will be at index 1
       // Initial fade-in for the first fact
       factFadeAnim.setValue(0); // Ensure opacity is 0 before fading in
-      Animated.timing(factFadeAnim, { toValue: 1, duration: 300, useNativeDriver: true }).start();
+      Animated.parallel([
+        Animated.timing(factFadeAnim, { toValue: 1, duration: 300, useNativeDriver: true })
+      ]).start();
     } else {
       setWeatherFact("No weather facts available at the moment!"); // Fallback
     }
@@ -375,6 +456,7 @@ export default function App() {
 
   // useEffect for automatically updating weather facts from the shuffled list
   useEffect(() => {
+    // const factSlideAnimY = new Animated.Value(0); // Removed for simpler fact animation
     if (WEATHER_FACTS.length === 0) {
         setWeatherFact("No weather facts to display!");
         return;
@@ -398,17 +480,61 @@ export default function App() {
       setCurrentFactIndex(nextIndexToSet);
 
       Animated.sequence([
-        Animated.timing(factFadeAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
-        Animated.timing(factFadeAnim, { toValue: 1, duration: 300, useNativeDriver: true }),
+        Animated.timing(factFadeAnim, { toValue: 0, duration: 250, useNativeDriver: true, easing: Easing.inOut(Easing.ease) }),
+        // The state update for weatherFact will happen here, then the fade-in starts
+        Animated.timing(factFadeAnim, { toValue: 1, duration: 250, useNativeDriver: true, easing: Easing.inOut(Easing.ease) })
       ]).start();
     }, 7000); // Update fact every 7 seconds
 
     return () => clearInterval(interval);
-  }, [shuffledWeatherFacts, currentFactIndex, factFadeAnim]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps 
+  }, [shuffledWeatherFacts, currentFactIndex]); // factFadeAnim removed as it's a ref, factSlideAnimY is local
 
+  // Effect for loading animation dots
+  useEffect(() => {
+    let animation;
+    if (loading) {
+      const createDotAnimation = (dotOpacity) => {
+        return Animated.sequence([
+          Animated.timing(dotOpacity, { toValue: 1, duration: 400, useNativeDriver: true, easing: Easing.inOut(Easing.ease) }),
+          Animated.timing(dotOpacity, { toValue: 0.3, duration: 400, useNativeDriver: true, easing: Easing.inOut(Easing.ease) }),
+          Animated.delay(100), 
+        ]);
+      };
+
+      animation = Animated.loop(
+        Animated.stagger(250, [ 
+          createDotAnimation(dot1Opacity),
+          createDotAnimation(dot2Opacity),
+          createDotAnimation(dot3Opacity),
+        ])
+      );
+      animation.start();
+    } else {
+      dot1Opacity.setValue(0.3);
+      dot2Opacity.setValue(0.3);
+      dot3Opacity.setValue(0.3);
+      if (animation) animation.stop();
+    }
+    return () => { if (animation) animation.stop(); };
+  }, [loading, dot1Opacity, dot2Opacity, dot3Opacity]);
+
+  // Effect for forecast item animations
+  useEffect(() => {
+    if (isShowingRealWeatherView && realWeatherData && dailyForecast.length > 0) {
+      const animations = dailyForecast.map((_, index) => 
+        Animated.parallel([
+          Animated.timing(forecastItemAnims[index].opacity, { toValue: 1, duration: 300, useNativeDriver: true }),
+          Animated.timing(forecastItemAnims[index].translateY, { toValue: 0, duration: 300, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+        ])
+      );
+      Animated.stagger(80, animations).start();
+    } else { forecastItemAnims.forEach(anim => { anim.opacity.setValue(0); anim.translateY.setValue(20); }); }
+  }, [dailyForecast, isShowingRealWeatherView, realWeatherData, forecastItemAnims]);
 
   // Get current theme colors based on dark mode state
   const themeColors = darkMode ? darkTheme : lightTheme;
+  useEffect(() => { setCurrentAppGradient(darkMode ? darkTheme.gradientColors : lightTheme.gradientColors); }, [darkMode]);
 
   // Function to toggle dark mode and save preference
   const toggleDarkMode = async () => {
@@ -434,6 +560,17 @@ export default function App() {
       console.error('Failed to load dark mode setting:', error);
     }
   };
+
+  // Load review related data
+  const loadReviewRelatedData = async () => {
+    try {
+      const fetches = await AsyncStorage.getItem('successfulRealWeatherFetches');
+      if (fetches !== null) setSuccessfulRealWeatherFetches(parseInt(fetches, 10));
+    } catch (error) {
+      console.error('Failed to load review related data:', error);
+    }
+  };
+
 
   // --- Generic Sound Playing Function ---
   const playSoundAsset = async (asset, soundNameForLog = 'sound') => {
@@ -473,6 +610,30 @@ export default function App() {
         }
       }
     }
+  };
+
+  // --- Daily Forecast Modal Functions ---
+  const openForecastModal = (dayData) => {
+    // Filter hourly data for the selected day
+    const hourlyForDay = allHourlyForecastData.filter(
+      (hourlyItem) => hourlyItem.datePart === dayData.dateString
+    );
+    
+    setSelectedForecastDayData({
+      ...dayData,
+      hourly: hourlyForDay, // Add filtered hourly data to the selected day's data
+      sunrise: dayData.sunrise, 
+      sunset: dayData.sunset,
+    });
+    setIsForecastModalVisible(true);
+    playClickSound();
+  };
+
+  const closeForecastModal = () => {
+    setIsForecastModalVisible(false);
+    // Delay clearing to allow modal to animate out smoothly if needed, though not strictly necessary with current setup
+    setTimeout(() => setSelectedForecastDayData(null), 300); 
+    playClickSound();
   };
 
   // Specific sound playing functions using the generic helper
@@ -667,13 +828,15 @@ export default function App() {
   };
 
   // --- Function to fetch real weather data ---
-  const handleFetchRealWeather = async () => {
-    if (!location.trim()) {
-      Alert.alert('Location Required', 'Please enter a location first.');
-      return;
-    }
+  const handleFetchRealWeather = async (searchQuery = location, coordinates = null) => {
     if (OPENWEATHERMAP_API_KEY === 'YOUR_OPENWEATHERMAP_API_KEY') {
       Alert.alert('API Key Missing', 'Please add your OpenWeatherMap API key in the App.js file.');
+      setLoading(false);
+      return;
+    }
+    if (!searchQuery && !coordinates) {
+      Alert.alert('Location Required', 'Please enter a location or use current location.');
+      setLoading(false);
       return;
     }
 
@@ -683,31 +846,118 @@ export default function App() {
     setResult(null); // Clear prank result
     setFakeData(null); // Clear fake data
     setRealWeatherData(null);
+    setDailyForecast([]); // Clear previous forecast
+    setAllHourlyForecastData([]); // Clear previous hourly forecast
     setRealWeatherError(null);
     setIsShowingRealWeatherView(true); // Indicate we want to show the real weather view
+    setCurrentAppGradient(darkMode ? darkTheme.gradientColors : lightTheme.gradientColors); // Reset gradient
+
+    let lat, lon, displayName;
 
     try {
-      const response = await fetch(
-        `https://api.openweathermap.org/data/2.5/weather?q=${location}&appid=${OPENWEATHERMAP_API_KEY}&units=metric`
-      );
-      const data = await response.json();
+      if (coordinates) {
+        lat = coordinates.latitude;
+        lon = coordinates.longitude;
+        try {
+          const reverseGeoResponse = await fetch(`http://api.openweathermap.org/geo/1.0/reverse?lat=${lat}&lon=${lon}&limit=1&appid=${OPENWEATHERMAP_API_KEY}`);
+          const reverseGeoData = await reverseGeoResponse.json();
+          if (reverseGeoResponse.ok && reverseGeoData.length > 0) {
+            displayName = `${reverseGeoData[0].name}${reverseGeoData[0].country ? ', ' + reverseGeoData[0].country : ''}`;
+            setLocation(displayName); // Update the input field with the fetched location name
+          } else {
+            displayName = "Current Location";
+          }
+        } catch (e) {
+          console.error("Reverse geocoding error:", e);
+          displayName = "Current Location";
+        }
+      } else {
+        const geoResponse = await fetch(
+          `http://api.openweathermap.org/geo/1.0/direct?q=${searchQuery}&limit=1&appid=${OPENWEATHERMAP_API_KEY}`
+        );
+        const geoData = await geoResponse.json();
+        if (!geoResponse.ok || geoData.length === 0) {
+          const errorMsg = (geoData && geoData.message) || 'City not found.';
+          setRealWeatherError(errorMsg);
+          Alert.alert('Geocoding Error', errorMsg);
+          setLoading(false);
+          return;
+        }
+        lat = geoData[0].lat;
+        lon = geoData[0].lon;
+        displayName = `${geoData[0].name}${geoData[0].country ? ', ' + geoData[0].country : ''}`;
+      }
 
-      if (response.ok) {
+      // Step 2: Fetch weather data from Open-Meteo
+      const openMeteoUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset&hourly=temperature_2m,relative_humidity_2m,precipitation_probability,weather_code,wind_speed_10m&timezone=auto&forecast_days=7`;
+      const weatherResponse = await fetch(openMeteoUrl);
+      const weatherData = await weatherResponse.json();
+
+      if (weatherResponse.ok && weatherData.current && weatherData.daily) {
+        const currentWmoInfo = getWeatherInfoFromWmoCode(weatherData.current.weather_code);
+        
         setRealWeatherData({
-          location: data.name,
-          temperature: Math.round(data.main.temp),
-          condition: data.weather[0].main,
-          description: data.weather[0].description,
-          icon: data.weather[0].icon,
-          humidity: data.main.humidity,
-          windSpeed: Math.round(data.wind.speed * 3.6), // m/s to km/h
-          high: Math.round(data.main.temp_max),
-          low: Math.round(data.main.temp_min),
+          location: displayName,
+          latitude: lat, // Store for potential refresh
+          longitude: lon, // Store for potential refresh
+          temperature: Math.round(weatherData.current.temperature_2m),
+          condition: currentWmoInfo.condition, // Main condition text
+          description: currentWmoInfo.description, // Detailed description
+          iconName: currentWmoInfo.iconName, // Icon filename for local assets
+          humidity: weatherData.current.relative_humidity_2m,
+          windSpeed: Math.round(weatherData.current.wind_speed_10m), // Already in km/h
+          high: Math.round(weatherData.daily.temperature_2m_max[0]), // Today's high
+          low: Math.round(weatherData.daily.temperature_2m_min[0]),   // Today's low
         });
+
+        const forecast = weatherData.daily.time.map((time, index) => {
+          const dailyWmoInfo = getWeatherInfoFromWmoCode(weatherData.daily.weather_code[index]);
+          return {
+            dateString: time, // Keep the date string for filtering hourly data
+            dt: new Date(time + "T00:00:00").getTime() / 1000, // Unix timestamp for start of day
+            temp: {
+              max: Math.round(weatherData.daily.temperature_2m_max[index]),
+              min: Math.round(weatherData.daily.temperature_2m_min[index]),
+            },
+            weather: [{ // Keep similar structure for UI compatibility
+              main: dailyWmoInfo.condition,
+              description: dailyWmoInfo.description,
+              iconName: dailyWmoInfo.iconName, // Icon filename
+            }],
+            sunrise: weatherData.daily.sunrise[index] ? new Date(weatherData.daily.sunrise[index]).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : 'N/A',
+            sunset: weatherData.daily.sunset[index] ? new Date(weatherData.daily.sunset[index]).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : 'N/A',
+          };
+        }).slice(0, 7); // Ensure 7 days
+        setDailyForecast(forecast);
+
+        // Process and store all hourly data
+        if (weatherData.hourly && weatherData.hourly.time) {
+          const hourlyProcessed = weatherData.hourly.time.map((timeISO, index) => {
+            const hourlyWmoInfo = getWeatherInfoFromWmoCode(weatherData.hourly.weather_code[index]);
+            return {
+              timeISO: timeISO, // Full ISO string "YYYY-MM-DDTHH:MM"
+              datePart: timeISO.split('T')[0], // "YYYY-MM-DD"
+              hourPart: timeISO.split('T')[1], // "HH:MM"
+              temp: Math.round(weatherData.hourly.temperature_2m[index]),
+              humidity: weatherData.hourly.relative_humidity_2m[index],
+              precipitation_probability: weatherData.hourly.precipitation_probability[index],
+              wind_speed: Math.round(weatherData.hourly.wind_speed_10m[index]),
+              iconName: hourlyWmoInfo.iconName,
+              condition: hourlyWmoInfo.condition,
+            };
+          });
+          setAllHourlyForecastData(hourlyProcessed);
+        }
+        // Increment successful fetches and check for review prompt
+        const newFetchCount = successfulRealWeatherFetches + 1;
+        setSuccessfulRealWeatherFetches(newFetchCount);
+        await AsyncStorage.setItem('successfulRealWeatherFetches', newFetchCount.toString());
+        checkAndRequestReview(newFetchCount); // Check if it's time to ask for a review
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } else {
-        setRealWeatherError(data.message || 'Failed to fetch real weather.');
-        Alert.alert('Real Weather Error', data.message || 'Could not fetch real weather data. Please check the location or try again.');
+        const errorMsg = weatherData.reason || 'Failed to fetch weather data from Open-Meteo.';
+        setRealWeatherError(errorMsg);
+        Alert.alert('Weather API Error', errorMsg);
       }
     } catch (error) {
       console.error('Error fetching real weather:', error);
@@ -716,6 +966,61 @@ export default function App() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const fetchWeatherForCurrentLocation = async () => {
+    await playClickSound();
+    setLoading(true);
+    let { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== 'granted') {
+        Alert.alert(
+            'Location Permission Denied', 
+            'SkyC⚡st needs your location to fetch the current weather. Please enable location services for this app in your device settings.',
+            [{ text: 'OK' }]
+        );
+        setLoading(false);
+        return;
+    }
+    try {
+        let { coords } = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        await handleFetchRealWeather(null, coords); // Pass null for searchQuery, and coords
+    } catch (error) {
+        console.error("Error getting current location or weather:", error);
+        Alert.alert("Error", "Could not fetch weather for current location. Ensure GPS is enabled.");
+        setLoading(false);
+    }
+  };
+
+  const onRefresh = React.useCallback(async () => {
+    setRefreshing(true);
+    await playClickSound();
+    if (isShowingRealWeatherView && realWeatherData && typeof realWeatherData.latitude === 'number' && typeof realWeatherData.longitude === 'number') {
+      await handleFetchRealWeather(null, { latitude: realWeatherData.latitude, longitude: realWeatherData.longitude });
+    } else if (location.trim()) { // Fallback to last searched text if no coords available
+      await handleFetchRealWeather(location);
+    } else {
+      // Optionally, try to fetch for current location if no other info is available
+      // await fetchWeatherForCurrentLocation(); 
+      // Or simply do nothing if no location context
+      console.log("No location available to refresh.");
+    }
+    setRefreshing(false);
+  }, [isShowingRealWeatherView, realWeatherData, location]); // Add dependencies
+
+  const handleShareRealWeather = async () => { /* ... implementation ... */ };
+
+
+  const spinLogo = () => {
+      rotateLogoAnim.setValue(0);
+      Animated.spring(rotateLogoAnim, {
+          toValue: 1,
+          friction: 6, // Adjust for bounciness
+          tension: 50, // Adjust for speed
+          useNativeDriver: true,
+      }).start(() => {
+          // Optional: Reset value if you want it to be ready for another discrete spin
+          // rotateLogoAnim.setValue(0); 
+      });
   };
 
   // Share functionality
@@ -766,13 +1071,14 @@ export default function App() {
       slideAnim.setValue(50);
       scaleAnim.setValue(0.8);
 
+      spinLogo(); // Spin the logo on new result
       // Start animations
       Animated.parallel([
         Animated.timing(fadeAnim, { toValue: 1, duration: 500, useNativeDriver: true }),
         Animated.timing(slideAnim, { toValue: 0, duration: 500, easing: Easing.out(Easing.ease), useNativeDriver: true }),
-        Animated.spring(scaleAnim, { toValue: 1, friction: 5, tension: 40, useNativeDriver: true }),
+        Animated.spring(scaleAnim, { toValue: 1, friction: 5, tension: 40, useNativeDriver: true }), // Slightly bouncier
       ]).start(() => {
-        
+
         // This callback runs once per successful animation tied to a new result/fakeData/prankCount
         if (prankCount === 1 && !hasShownTryMoreLocationsPrompt) {
           // Only show "Try More" on the very first prank, if not already shown
@@ -828,21 +1134,31 @@ export default function App() {
   const switchTab = async (tabName) => {
     if (activeTab === tabName) return; // 
     await playClickSound(); 
+
+    // Fade out the current tab content
     Animated.timing(tabFadeAnim, {
       toValue: 0,
-      duration: 150, // Fast fade out
+      duration: 150, // A bit faster fade-out
+      easing: Easing.inOut(Easing.ease),
       useNativeDriver: true,
     }).start(() => {
-      setActiveTab(tabName); // Switch tab
-      // Animate in the new tab content
-      Animated.timing(tabFadeAnim, {
-        toValue: 1,
-        duration: 250, 
-        useNativeDriver: true,
-      }).start();
+      // Update the active tab state *after* the fade-out is complete
+      // This ensures the old content is fully transparent before the new content is rendered
+      setActiveTab(tabName);
+
+      // Use requestAnimationFrame to ensure the UI has updated with the new activeTab
+      // before starting the fade-in. This can help prevent flickering.
+      requestAnimationFrame(() => {
+        // Fade in the new tab content
+        Animated.timing(tabFadeAnim, {
+          toValue: 1,
+          duration: 200, // A corresponding fade-in duration
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }).start();
+      });
     });
   };
-
 
   // --- Feedback Submission ---
   const handleFeedbackSubmit = async () => {
@@ -908,283 +1224,399 @@ export default function App() {
     }
   };
   // --- End Feedback Submission ---
+  const SUCCESSFUL_FETCHES_FOR_REVIEW = 5; 
+  const MIN_DAYS_BETWEEN_REVIEW_PROMPTS = 14; 
 
+  const checkAndRequestReview = async (currentFetchCount) => {
+    try {
+      const hasRated = await AsyncStorage.getItem('hasRatedApp');
+      if (hasRated === 'true') return; 
 
+      const lastPromptTimestampStr = await AsyncStorage.getItem('lastRatePromptTimestamp');
+      const lastPromptTimestamp = lastPromptTimestampStr ? parseInt(lastPromptTimestampStr, 10) : 0;
+      const now = Date.now();
+
+      if (currentFetchCount >= SUCCESSFUL_FETCHES_FOR_REVIEW) {
+        if (now - lastPromptTimestamp > MIN_DAYS_BETWEEN_REVIEW_PROMPTS * 24 * 60 * 60 * 1000) {
+          if (await StoreReview.isAvailableAsync()) {
+            Alert.alert(
+              "Enjoying SkyC⚡st?",
+              "If you like the app, would you mind taking a moment to rate it? It won't take more than a minute. Thanks for your support!",
+              [
+                { text: "Rate Now", onPress: async () => { StoreReview.requestReview(); await AsyncStorage.setItem('hasRatedApp', 'true'); } },
+                { text: "Later", onPress: async () => await AsyncStorage.setItem('lastRatePromptTimestamp', now.toString()) },
+                { text: "No, Thanks", onPress: async () => await AsyncStorage.setItem('hasRatedApp', 'true'), style: 'cancel' }
+              ]
+            );
+          }
+        }
+      }
+    } catch (error) { console.error("Error checking/requesting store review:", error); }
+  };
+
+  const logoRotation = rotateLogoAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
   
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle={darkMode ? 'light-content' : 'dark-content'} />
-      <LinearGradient colors={themeColors.gradientColors} style={styles.background}>
-        {/* Tab Bar */}
-        <View style={styles.tabBar}>
-          <TouchableOpacity
-            style={[styles.tabButton, { borderBottomColor: activeTab === 'skycast_now' ? themeColors.tabActive : 'transparent' }]}
-            onPress={() => switchTab('skycast_now')}
-          >
-            <Text style={[styles.tabButtonText, { color: activeTab === 'skycast_now' ? themeColors.tabActive : themeColors.tabInactive, fontWeight: activeTab === 'skycast_now' ? 'bold' : 'normal' }]}>
-              SkyC⚡st Now
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tabButton, { borderBottomColor: activeTab === 'feedback' ? themeColors.tabActive : 'transparent' }]}
-            onPress={() => switchTab('feedback')}
-          >
-            <Text style={[styles.tabButtonText, { color: activeTab === 'feedback' ? themeColors.tabActive : themeColors.tabInactive, fontWeight: activeTab === 'feedback' ? 'bold' : 'normal' }]}>
-              Feedback
-            </Text>
-          </TouchableOpacity>
-        </View>
+      <View style={styles.container}>
+        <StatusBar barStyle={darkMode ? 'light-content' : 'dark-content'} />
+        <LinearGradient colors={themeColors.gradientColors} style={styles.background}>
+          {/* Tab Bar */}
+          <View style={styles.tabBar}>
+            <TouchableOpacity
+              style={[styles.tabButton, { borderBottomColor: activeTab === 'skycast_now' ? themeColors.tabActive : 'transparent' }]}
+              onPress={() => switchTab('skycast_now')}
+            >
+              <Text style={[styles.tabButtonText, { color: activeTab === 'skycast_now' ? themeColors.tabActive : themeColors.tabInactive, fontWeight: activeTab === 'skycast_now' ? 'bold' : 'normal' }]}>
+                SkyC⚡st Now
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.tabButton, { borderBottomColor: activeTab === 'feedback' ? themeColors.tabActive : 'transparent' }]}
+              onPress={() => switchTab('feedback')}
+            >
+              <Text style={[styles.tabButtonText, { color: activeTab === 'feedback' ? themeColors.tabActive : themeColors.tabInactive, fontWeight: activeTab === 'feedback' ? 'bold' : 'normal' }]}>
+                Feedback
+              </Text>
+            </TouchableOpacity>
+          </View>
 
-        {/* KeyboardAvoidingView as the outer container for scrolling content */}
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={{ flex: 1 }} 
-        >
-          {/* ScrollView nested inside KAV */}
-          <ScrollView
-            style={{ flex: 1 }} 
-            contentContainerStyle={{ flexGrow: 1, padding: 20 }} // Allows content to grow and adds padding
-            keyboardShouldPersistTaps="handled"
+          {/* KeyboardAvoidingView as the outer container for scrolling content */}
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={{ flex: 1 }}
           >
-            {/* Animated.View for tab content fade, now with flex: 1 */}
-            <Animated.View style={{ flex: 1, opacity: tabFadeAnim }}>
-              {activeTab === 'skycast_now' ? (
-                <>
-                  {/* Header Section */}
-                  <View style={styles.header}>
-                    <View style={styles.darkModeContainer}>
-                      <Text style={[styles.darkModeText, { color: themeColors.text }]}>{darkMode ? '🌙' : '☀️'}</Text>
-                      <Switch
-                        value={darkMode}
-                        onValueChange={toggleDarkMode}
-                        trackColor={{ false: '#767577', true: themeColors.buttonBg }} 
-                        thumbColor={darkMode ? themeColors.accentColor : '#f4f3f4'} 
-                        ios_backgroundColor="#3e3e3e"
-                        style={styles.darkModeSwitch}
+                <ScrollView
+                  style={{ flex: 1 }} 
+                  contentContainerStyle={{ flexGrow: 1, padding: 20 }} 
+                  keyboardShouldPersistTaps="handled"
+                  refreshControl={ 
+                    activeTab === 'skycast_now' && (isShowingRealWeatherView || result || fakeData) ? (
+                      <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={onRefresh}
+                        tintColor={themeColors.accentColor} 
+                        colors={[themeColors.accentColor]} 
                       />
-                    </View>
-                    <View> {/* Removed Animated.View and transform for logo as it wasn't used */}
-                      <Image
-                        source={darkMode ? require('./assets/logo-dark.png') : require('./assets/logo.png')}
-                        style={styles.logo}
-                      />
-                    </View>
-                    <Text style={[styles.title, { color: themeColors.text }]}>SkyC⚡st</Text>
-                    <Text style={[styles.subtitle, { color: themeColors.subText }]}>
-                      {SUBTITLES[currentSubtitleIndex]}
-                    </Text>
-                  </View>
-
-                  {/* Search Section */}
-                  <View style={styles.searchContainer}>
-                    <TextInput
-                      style={[styles.input, { backgroundColor: themeColors.inputBg, color: themeColors.text, borderColor: themeColors.inputBorder }]}
-                      placeholder="Enter a location..."
-                      placeholderTextColor="#bbb"
-                      value={location}
-                      onChangeText={setLocation}
-                      onSubmitEditing={handleSearch} // Trigger search on submit
-                      returnKeyType="search" // Show search button on keyboard
-                      editable={!loading} 
-                    />
-                    <TouchableOpacity
-                      style={[styles.searchButton, { backgroundColor: themeColors.buttonBg }]}
-                      onPress={handleSearch}
-                      activeOpacity={0.7}
-                      disabled={loading} // Disable button while loading
-                    >
-                      <Text style={styles.searchButtonText}>
-                        {loading ? 'Forecasting...' : 'Get Forecast'}
-                      </Text>
-                    </TouchableOpacity>
-
-                    {showRealWeather && (
-                      <TouchableOpacity
-                        style={[styles.realWeatherButton, { backgroundColor: themeColors.inputBg, borderColor: themeColors.inputBorder, marginTop: 10 }]}
-                        onPress={handleFetchRealWeather} // Call the new function
-                        activeOpacity={0.7}
-                      >
-                        <Text style={[styles.realWeatherButtonText, { color: themeColors.text }]}>Show Real Weather</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-
-                  {/* Wrapper for dynamic content to stabilize layout and ensure scrollability */}
-                  <View style={styles.dynamicContentWrapper}>
-                    {loading ? (
-                      <View style={styles.loadingContainer}>
-                        {/* <Image source={require('./assets/loading-weather.gif')} style={styles.loadingImage} /> */} {/* GIF Removed */}
-                        <Text style={[styles.loadingText, { color: themeColors.text }]}>{currentLoadingMsg}{loadingDots}</Text>
-                        {/* Added loadingDots here */}
-                      </View>
-                    ) : isShowingRealWeatherView && realWeatherData ? (
-                      // Real Weather Data Card
-                      <View style={styles.fakeDataContainer}> {/* Reusing fakeDataContainer style for now */}
-                        <View style={[styles.weatherCard, { backgroundColor: dynamicCardBg || themeColors.cardBg }]}>
-                          <Text style={[styles.locationText, { color: themeColors.text }]}>{realWeatherData.location}</Text>
-                          <View style={styles.mainWeatherRow}>
-                            {/* You might want to map OpenWeatherMap icons to your local assets or use their icon URL */}
-                            <Image
-                              source={
-                                realWeatherData.condition?.includes('Rain') ? require('./assets/rain-icon.png') :
-                                realWeatherData.condition?.includes('Clouds') ? require('./assets/cloudy-icon.png') :
-                                realWeatherData.condition?.includes('Clear') ? require('./assets/sun-icon.png') :
-                                realWeatherData.condition?.includes('Snow') ? require('./assets/snow-icon.png') :
-                                realWeatherData.condition?.includes('Thunderstorm') ? require('./assets/thunder-icon.png') :
-                                require('./assets/wind-icon.png') // Default icon
-                              }
-                              style={styles.weatherIcon}
+                    ) : undefined 
+                  }
+                >
+                  <Animated.View style={{ flex: 1, opacity: tabFadeAnim }}>
+                    {activeTab === 'skycast_now' ? (
+                      <>
+                        {/* Header Section */}
+                        <View style={styles.header}>
+                          <View style={styles.darkModeContainer}>
+                            <Text style={[styles.darkModeText, { color: themeColors.text }]}>{darkMode ? '🌙' : '☀️'}</Text>
+                            <Switch
+                              value={darkMode}
+                              onValueChange={toggleDarkMode}
+                              trackColor={{ false: '#767577', true: themeColors.buttonBg }} 
+                              thumbColor={darkMode ? themeColors.accentColor : '#f4f3f4'} 
+                              ios_backgroundColor="#3e3e3e"
+                              style={styles.darkModeSwitch}
                             />
-                            <View>
-                              <Text style={[styles.tempText, { color: themeColors.text }]}>{realWeatherData.temperature}°C</Text>
-                              <Text style={[styles.conditionText, { color: themeColors.subText, textTransform: 'capitalize' }]}>{realWeatherData.description}</Text>
-                            </View>
                           </View>
-                          <View style={styles.detailsRow}>
-                            <View style={styles.detailItem}><Text style={[styles.detailLabel, { color: themeColors.subText }]}>HUMIDITY</Text><Text style={[styles.detailValue, { color: themeColors.text }]}>{realWeatherData.humidity}%</Text></View>
-                            <View style={styles.detailItem}><Text style={[styles.detailLabel, { color: themeColors.subText }]}>WIND</Text><Text style={[styles.detailValue, { color: themeColors.text }]}>{realWeatherData.windSpeed} km/h</Text></View>
-                            <View style={styles.detailItem}><Text style={[styles.detailLabel, { color: themeColors.subText }]}>HIGH/LOW</Text><Text style={[styles.detailValue, { color: themeColors.text }]}>{realWeatherData.high}°/{realWeatherData.low}°</Text></View>
-                          </View>
+                          <Animated.Image // Changed View to Animated.Image for rotation
+                            source={darkMode ? require('./assets/logo-dark.png') : require('./assets/logo.png')}
+                            style={[styles.logo, { transform: [{ rotate: logoRotation }] }]}
+                          />
+                          <Text style={[styles.title, { color: themeColors.text }]}>SkyC⚡st</Text>
+                          <Text style={[styles.subtitle, { color: themeColors.subText }]}>
+                            {SUBTITLES[currentSubtitleIndex]}
+                          </Text>
                         </View>
-                      </View>
-                    ) : isShowingRealWeatherView && realWeatherError ? (
-                      <Text style={[styles.emptyStateText, { color: themeColors.accentColor, marginTop: 20 }]}>{realWeatherError}</Text>
-                    ) : fakeData ? (
-                      // Fake Weather Data Card
-                      <View style={styles.fakeDataContainer}>
-                        <View
-                          style={[
-                            styles.weatherCard,
-                            { backgroundColor: dynamicCardBg || themeColors.cardBg } // Apply dynamic or theme default
-                          ]}
-                        >
-                          <Text style={[styles.locationText, { color: themeColors.text }]}>{fakeData.location}</Text>
-                          <View style={styles.mainWeatherRow}>
-                            <Image
-                              source={
-                                fakeData.condition?.includes('Rain') ? require('./assets/rain-icon.png') :
-                                fakeData.condition?.includes('Cloud') ? require('./assets/cloudy-icon.png') :
-                                fakeData.condition?.includes('Sun') ? require('./assets/sun-icon.png') :
-                                fakeData.condition?.includes('Snow') ? require('./assets/snow-icon.png') :
-                                fakeData.condition?.includes('Thunder') ? require('./assets/thunder-icon.png') :
-                                fakeData.condition?.includes('Bifrost') ? require('./assets/bifrost-icon.png') :
-                                fakeData.condition?.includes('Quantum') ? require('./assets/quantum-icon.png') :
-                                require('./assets/wind-icon.png') // Default icon
-                              }
-                              style={styles.weatherIcon}
-                            />
-                            <View>
-                              <Text style={[styles.tempText, { color: themeColors.text }]}>{fakeData.temperature}°C</Text>
-                              <Text style={[styles.conditionText, { color: themeColors.subText }]}>{fakeData.condition}</Text>
-                            </View>
-                          </View>
-                          {fakeData.extra ? (
-                            <Text style={[styles.extraInfoText, { color: themeColors.accentColor }]}>{fakeData.extra}</Text>
-                          ) : null}
-                          <View style={styles.detailsRow}>
-                            <View style={styles.detailItem}><Text style={[styles.detailLabel, { color: themeColors.subText }]}>HUMIDITY</Text><Text style={[styles.detailValue, { color: themeColors.text }]}>{fakeData.humidity}%</Text></View>
-                            <View style={styles.detailItem}><Text style={[styles.detailLabel, { color: themeColors.subText }]}>WIND</Text><Text style={[styles.detailValue, { color: themeColors.text }]}>{fakeData.windSpeed} km/h</Text></View>
-                            <View style={styles.detailItem}><Text style={[styles.detailLabel, { color: themeColors.subText }]}>HIGH/LOW</Text><Text style={[styles.detailValue, { color: themeColors.text }]}>{fakeData.high}°/{fakeData.low}°</Text></View>
-                          </View>
-                        </View>
-                      </View>
-                    ) : result ? (
-                      // Prank Result Card
-                      <ViewShot ref={viewShotRef} options={{ format: 'png', quality: 0.9 }} style={styles.viewShotContainer}>
-                        <Animated.View style={[styles.resultContainer, { opacity: fadeAnim, transform: [{ translateY: slideAnim }, { scale: scaleAnim }] }]}>
-                          <View
-                            style={[
-                              styles.weatherCard,
-                              { backgroundColor: dynamicCardBg || themeColors.cardBg } // Apply dynamic or theme default
-                            ]}
+
+                        {/* Search Section */}
+                        <View style={styles.searchContainer}>
+                          <TextInput
+                            style={[styles.input, { backgroundColor: themeColors.inputBg, color: themeColors.text, borderColor: themeColors.inputBorder }]}
+                            placeholder="Enter a location..."
+                            placeholderTextColor="#bbb"
+                            value={location}
+                            onChangeText={setLocation}
+                            onSubmitEditing={handleSearch} 
+                            returnKeyType="search" 
+                            editable={!loading} 
                           >
-                            {/* <Text style={[styles.locationText, { color: themeColors.text }]}>{result.location}</Text> */} {/* Removed this location display */}
-                            <Image source={require('./assets/laugh-emoji.png')} style={styles.weatherIcon} />
-                            <Text style={[styles.forecastTitle, { color: themeColors.subText }]}>
-                              Weather Forecast for {result.location}
+                          </TextInput>
+                          <TouchableOpacity
+                            style={[styles.searchButton, { backgroundColor: themeColors.buttonBg }]}
+                            onPress={handleSearch}
+                            activeOpacity={0.7}
+                            disabled={loading} 
+                          >
+                            <Text style={styles.searchButtonText}>
+                              {loading ? 'Forecasting...' : 'Get Forecast'}
                             </Text>
-                            <Text style={[styles.goCheckOutsideText, { color: themeColors.text }]}>
-                              Go Check Outside!
-                            </Text>
-                            {/* <Text style={[styles.weatherMessage, { color: themeColors.text }]}>{result.message}</Text> */} {/* Commented out to display only one title above roast */}
-                  <Text style={[styles.roastText, { color: themeColors.accentColor }]}>{result.roast}</Text>
-                  <Text style={[styles.nameSign, { color: themeColors.subText }]}>- Sk Ibrahim</Text>
-                  <View style={styles.shareButtonContainer}>
-                    <TouchableOpacity style={[styles.screenshotButton, { backgroundColor: themeColors.buttonBg }]} onPress={captureAndShareScreenshot} activeOpacity={0.7}>
-                      <Text style={styles.shareButtonText}>Share Screenshot</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </Animated.View>
-            </ViewShot>
+                          </TouchableOpacity>
+
+                          {showRealWeather && !isShowingRealWeatherView && ( 
+                            <TouchableOpacity
+                              style={[styles.realWeatherButton, { backgroundColor: themeColors.inputBg, borderColor: themeColors.inputBorder, marginTop: 10 }]}
+                              onPress={() => handleFetchRealWeather(location)} 
+                              activeOpacity={0.7}
+                            >
+                              <Text style={[styles.realWeatherButtonText, { color: themeColors.text }]}>Show Real Weather</Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+
+                        {/* Wrapper for dynamic content to stabilize layout and ensure scrollability */}
+                        <View style={styles.dynamicContentWrapper}>
+                          {loading ? (
+                            <View style={styles.loadingContainer}>
+                              <Text style={[styles.loadingText, { color: themeColors.text }]}>{currentLoadingMsg}</Text>
+                              <View style={styles.loadingDotsContainer}>
+                                <Animated.Text style={[styles.loadingDot, { color: themeColors.text, opacity: dot1Opacity }]}>.</Animated.Text>
+                                <Animated.Text style={[styles.loadingDot, { color: themeColors.text, opacity: dot2Opacity }]}>.</Animated.Text>
+                                <Animated.Text style={[styles.loadingDot, { color: themeColors.text, opacity: dot3Opacity }]}>.</Animated.Text>
+                              </View>
+                            </View>
+                          ) : isShowingRealWeatherView && realWeatherData ? (
+                            <View style={styles.fakeDataContainer}> 
+                              <View style={[styles.weatherCard, { backgroundColor: themeColors.cardBg }]}> 
+                                {!loading && ( 
+                                  <TouchableOpacity
+                                    style={[styles.currentLocationButton, { backgroundColor: themeColors.inputBg, borderColor: themeColors.inputBorder, marginBottom: 15 }]}
+                                    onPress={fetchWeatherForCurrentLocation}
+                                    disabled={loading} activeOpacity={0.7} >
+                                    <Text style={[styles.currentLocationButtonIcon, { color: themeColors.text }]}>📍</Text>
+                                    <Text style={[styles.currentLocationButtonText, { color: themeColors.text }]}>Use My Current Location</Text>
+                                  </TouchableOpacity>)}
+                                <Text style={[styles.locationText, { color: themeColors.text }]}>{realWeatherData.location}</Text>
+                                <View style={styles.mainWeatherRow}>
+                                  <Image                              
+                                    source={iconMap[realWeatherData.iconName] || iconMap['wind-icon.png']}
+                                    style={styles.weatherIcon}
+                                  />
+                                  <View>
+                                    <Text style={[styles.tempText, { color: themeColors.text }]}>{realWeatherData.temperature}°C</Text>
+                                    <Text style={[styles.conditionText, { color: themeColors.subText, textTransform: 'capitalize' }]}>{realWeatherData.description}</Text>
+                                  </View>
+                                </View>
+                                <View style={styles.detailsRow}>
+                                  <View style={styles.detailItem}><Text style={[styles.detailLabel, { color: themeColors.subText }]}>HUMIDITY</Text><Text style={[styles.detailValue, { color: themeColors.text }]}>{realWeatherData.humidity}%</Text></View>
+                                  <View style={styles.detailItem}><Text style={[styles.detailLabel, { color: themeColors.subText }]}>WIND</Text><Text style={[styles.detailValue, { color: themeColors.text }]}>{realWeatherData.windSpeed} km/h</Text></View>
+                                  <View style={styles.detailItem}><Text style={[styles.detailLabel, { color: themeColors.subText }]}>HIGH/LOW</Text><Text style={[styles.detailValue, { color: themeColors.text }]}>{realWeatherData.high}°/{realWeatherData.low}°</Text></View>
+                                </View>
+                                {dailyForecast.length > 0 && (
+                                  <View style={styles.forecastSectionContainer}>
+                                    <Text style={[styles.forecastSectionTitle, { color: themeColors.text }]}>7-Day Forecast</Text>
+                                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.forecastScrollView}>
+                                      {dailyForecast.map((day, index) => (
+                                        <TouchableOpacity 
+                                          key={index} 
+                                          onPress={() => openForecastModal(day)} 
+                                          activeOpacity={0.7}
+                                          style={{ 
+                                            opacity: forecastItemAnims[index].opacity,
+                                            transform: [{ translateY: forecastItemAnims[index].translateY }],
+                                          }}>
+                                          <Animated.View style={[styles.forecastItemContainer, {backgroundColor: darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'}]}>
+                                            <Text style={[styles.forecastDayText, { color: themeColors.text }]}>{getDayOfWeek(day.dt)}</Text>
+                                            <Image
+                                              source={iconMap[day.weather[0].iconName] || iconMap['wind-icon.png']}
+                                              style={styles.forecastIcon}
+                                            />
+                                            <Text style={[styles.forecastTempText, { color: themeColors.text }]}>{Math.round(day.temp.max)}°</Text>
+                                            <Text style={[styles.forecastTempText, { color: themeColors.subText, fontSize: 15 }]}>{Math.round(day.temp.min)}°</Text>
+                                          </Animated.View>
+                                        </TouchableOpacity>
+                                      ))}
+                                    </ScrollView>
+                                  </View>
+                                )}
+                              </View>
+                            </View>
+                          ) : isShowingRealWeatherView && realWeatherError ? (
+                            <Text style={[styles.emptyStateText, { color: themeColors.accentColor, marginTop: 20 }]}>{realWeatherError}</Text>
+                          ) : fakeData ? (
+                            <View style={styles.fakeDataContainer}>
+                              <View
+                                style={[
+                                  styles.weatherCard,
+                                  { backgroundColor: dynamicCardBg || themeColors.cardBg } 
+                                ]}
+                              >
+                                <Text style={[styles.locationText, { color: themeColors.text }]}>{fakeData.location}</Text>
+                                <View style={styles.mainWeatherRow}>
+                                  <Image
+                                    source={
+                                      fakeData.condition?.includes('Rain') ? require('./assets/rain-icon.png') :
+                                      fakeData.condition?.includes('Cloud') ? require('./assets/cloudy-icon.png') :
+                                      fakeData.condition?.includes('Sun') ? require('./assets/sun-icon.png') :
+                                      fakeData.condition?.includes('Snow') ? require('./assets/snow-icon.png') :
+                                      fakeData.condition?.includes('Thunder') ? require('./assets/thunder-icon.png') :
+                                      fakeData.condition?.includes('Bifrost') ? require('./assets/bifrost-icon.png') :
+                                      fakeData.condition?.includes('Quantum') ? require('./assets/quantum-icon.png') :
+                                      require('./assets/wind-icon.png') 
+                                    }
+                                    style={styles.weatherIcon}
+                                  />
+                                  <View>
+                                    <Text style={[styles.tempText, { color: themeColors.text }]}>{fakeData.temperature}°C</Text>
+                                    <Text style={[styles.conditionText, { color: themeColors.subText }]}>{fakeData.condition}</Text>
+                                  </View>
+                                </View>
+                                {fakeData.extra ? (
+                                  <Text style={[styles.extraInfoText, { color: themeColors.accentColor }]}>{fakeData.extra}</Text>
+                                ) : null}
+                                <View style={styles.detailsRow}>
+                                  <View style={styles.detailItem}><Text style={[styles.detailLabel, { color: themeColors.subText }]}>HUMIDITY</Text><Text style={[styles.detailValue, { color: themeColors.text }]}>{fakeData.humidity}%</Text></View>
+                                  <View style={styles.detailItem}><Text style={[styles.detailLabel, { color: themeColors.subText }]}>WIND</Text><Text style={[styles.detailValue, { color: themeColors.text }]}>{fakeData.windSpeed} km/h</Text></View>
+                                  <View style={styles.detailItem}><Text style={[styles.detailLabel, { color: themeColors.subText }]}>HIGH/LOW</Text><Text style={[styles.detailValue, { color: themeColors.text }]}>{fakeData.high}°/{fakeData.low}°</Text></View>
+                                </View>
+                              </View>
+                            </View>
+                          ) : result ? (
+                            <ViewShot ref={viewShotRef} options={{ format: 'png', quality: 0.9 }} style={styles.viewShotContainer}>
+                              <Animated.View style={[styles.resultContainer, { opacity: fadeAnim, transform: [{ translateY: slideAnim }, { scale: scaleAnim }] }]}>
+                                <View
+                                  style={[
+                                    styles.weatherCard,
+                                    { backgroundColor: dynamicCardBg || themeColors.cardBg } 
+                                  ]}
+                                >
+                                  <Image source={require('./assets/laugh-emoji.png')} style={styles.weatherIcon} />
+                                  <Text style={[styles.forecastTitle, { color: themeColors.subText }]}>
+                                    Weather Forecast for {result.location}
+                                  </Text>
+                                  <Text style={[styles.goCheckOutsideText, { color: themeColors.text }]}>
+                                    Go Check Outside!
+                                  </Text>
+                        <Text style={[styles.roastText, { color: themeColors.accentColor }]}>{result.roast}</Text>
+                        <Text style={[styles.nameSign, { color: themeColors.subText }]}>- Sk Ibrahim</Text>
+                        <View style={styles.shareButtonContainer}>
+                          <TouchableOpacity style={[styles.screenshotButton, { backgroundColor: themeColors.buttonBg }]} onPress={captureAndShareScreenshot} activeOpacity={0.7}>
+                            <Text style={styles.shareButtonText}>Share Screenshot</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    </Animated.View>
+                  </ViewShot>
+                          ) : (
+                            <Text style={[styles.emptyStateText, { color: themeColors.subText }]}>Enter a location to unlock the forecast...</Text>
+                          )}
+                        </View>
+
+                        {/* Weather Fact Section */}
+                        <Animated.View
+                          style={[
+                            styles.weatherFactContainer,
+                            {
+                              backgroundColor: themeColors.factBg,
+                              opacity: factFadeAnim,
+                              borderColor: themeColors.accentColor ? `${themeColors.accentColor}80` : 'rgba(120,120,120,0.5)' 
+                            }]}>
+                          <Text style={[styles.weatherFactText, { color: themeColors.text }]}>{weatherFact}</Text>
+                        </Animated.View>
+                      </>
                     ) : (
-                      // Empty state placeholder before any search
-                      <Text style={[styles.emptyStateText, { color: themeColors.subText }]}>Enter a location to unlock the forecast...</Text>
+                      // Feedback Tab Content
+                      <View style={styles.feedbackContainer}>
+                        <Text style={[styles.feedbackTitle, { color: themeColors.text }]}>I value your feedback! (Not really)</Text>
+                        <Text style={[styles.feedbackDescription, { color: themeColors.subText }]}>Please let me know your thoughts or suggestions below.</Text>
+                        <TextInput
+                          style={[styles.feedbackInput, { backgroundColor: themeColors.inputBg, color: themeColors.text, borderColor: themeColors.inputBorder, height: 50, marginBottom: 10 }]}
+                          placeholder="Your Name (Optional)"
+                          placeholderTextColor="#bbbbbb"
+                          value={feedbackUserName}
+                          onChangeText={setFeedbackUserName}
+                          editable={!feedbackLoading}
+                          maxLength={100}
+                        />
+                        <TextInput
+                          style={[styles.feedbackInput, { backgroundColor: themeColors.inputBg, color: themeColors.text, borderColor: themeColors.inputBorder, height: 150  }]}
+                          placeholder="Type your feedback here... (if you must)"
+                          placeholderTextColor="#bbbbbb"
+                          value={feedbackText}
+                          onChangeText={setFeedbackText}
+                          multiline
+                          editable={!feedbackLoading}
+                          textAlignVertical="top" 
+                          maxLength={500}
+                        />
+                        <TouchableOpacity
+                          style={[styles.feedbackSubmitButton, { backgroundColor: feedbackText.trim() ? themeColors.buttonBg : '#888', opacity: feedbackLoading ? 0.7 : 1 }]}
+                          onPress={handleFeedbackSubmit} 
+                          disabled={feedbackLoading || !feedbackText.trim()}
+                          activeOpacity={0.7}>
+                          <Text style={styles.feedbackSubmitButtonText}>{feedbackLoading ? 'Submitting...' : 'Submit Feedback'}</Text>
+                        </TouchableOpacity>
+                        {feedbackSuccess && (
+                          <Text style={[styles.feedbackSuccessText, { color: themeColors.accentColor }]}>Thank you for your feedback! 🙌 (We're probably not going to read it)</Text>
+                        )}
+
+                        <View style={{ flex: 1 }} />
+                        <View style={styles.bottomInfoContainer}>
+                          <Text style={[styles.bottomInfoText, { color: themeColors.subText }]}>Skycast v2.0</Text>
+                          <Text style={[styles.bottomInfoText, { color: themeColors.subText }]}>Made in Adilabad</Text>
+                        </View>
+                      </View>
                     )}
+                  </Animated.View>
+                </ScrollView>
+          </KeyboardAvoidingView>
+
+          {/* Detailed Forecast Modal */}
+          {selectedForecastDayData && (
+            <Modal
+              animationType="slide"
+              transparent={true}
+              visible={isForecastModalVisible}
+              onRequestClose={closeForecastModal}
+            >
+              <View style={styles.modalOverlay}>
+                <View style={[styles.modalContent, { backgroundColor: themeColors.cardBg }]}>
+                  <Text style={[styles.modalTitle, { color: themeColors.text }]}>
+                    {new Date(selectedForecastDayData.dt * 1000).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+                  </Text>
+                  <Image
+                    source={iconMap[selectedForecastDayData.weather[0].iconName] || iconMap['wind-icon.png']}
+                    style={styles.modalWeatherIcon}
+                  />
+                  <Text style={[styles.modalCondition, { color: themeColors.text, textTransform: 'capitalize' }]}>{selectedForecastDayData.weather[0].main}</Text>
+                  <Text style={[styles.modalDescription, { color: themeColors.subText, textTransform: 'capitalize' }]}>{selectedForecastDayData.weather[0].description}</Text>
+                  <Text style={[styles.modalTemp, { color: themeColors.text }]}>
+                    High: {selectedForecastDayData.temp.max}° / Low: {selectedForecastDayData.temp.min}°
+                  </Text>
+                  <View style={styles.modalSunriseSunsetContainer}>
+                    <Text style={[styles.modalSunriseSunsetText, { color: themeColors.subText }]}>🌅 Sunrise: {selectedForecastDayData.sunrise}</Text>
+                    <Text style={[styles.modalSunriseSunsetText, { color: themeColors.subText }]}>🌇 Sunset: {selectedForecastDayData.sunset}</Text>
                   </View>
 
-                  {/* Weather Fact Section */}
-                  <Animated.View
-                    style={[
-                      styles.weatherFactContainer,
-                      {
-                        backgroundColor: themeColors.factBg,
-                        opacity: factFadeAnim,
-                        borderColor: themeColors.accentColor ? `${themeColors.accentColor}80` : 'rgba(120,120,120,0.5)' // Moved dynamic borderColor here
-                      }]}>
-                    <Text style={[styles.weatherFactText, { color: themeColors.text }]}>{weatherFact}</Text>
-                  </Animated.View>
-                </>
-              ) : (
-                // Feedback Tab Content
-                <View style={styles.feedbackContainer}>
-                  <Text style={[styles.feedbackTitle, { color: themeColors.text }]}>I value your feedback! (Not really)</Text>
-                  <Text style={[styles.feedbackDescription, { color: themeColors.subText }]}>Please let me know your thoughts or suggestions below.</Text>
-                  <TextInput
-                    style={[styles.feedbackInput, { backgroundColor: themeColors.inputBg, color: themeColors.text, borderColor: themeColors.inputBorder, height: 50, marginBottom: 10 }]}
-                    placeholder="Your Name (Optional)"
-                    placeholderTextColor="#bbbbbb"
-                    value={feedbackUserName}
-                    onChangeText={setFeedbackUserName}
-                    editable={!feedbackLoading}
-                    maxLength={100}
-                  />
-                  <TextInput
-                    style={[styles.feedbackInput, { backgroundColor: themeColors.inputBg, color: themeColors.text, borderColor: themeColors.inputBorder, height: 150 /* Explicit height for multiline */ }]}
-                    placeholder="Type your feedback here... (if you must)"
-                    placeholderTextColor="#bbbbbb"
-                    value={feedbackText}
-                    onChangeText={setFeedbackText}
-                    multiline
-                    editable={!feedbackLoading}
-                    textAlignVertical="top" // Good for multiline
-                    maxLength={500}
-                  />
-                  <TouchableOpacity
-                    style={[styles.feedbackSubmitButton, { backgroundColor: feedbackText.trim() ? themeColors.buttonBg : '#888', opacity: feedbackLoading ? 0.7 : 1 }]}
-                    onPress={handleFeedbackSubmit} // Use the new handler
-                    disabled={feedbackLoading || !feedbackText.trim()}
-                    activeOpacity={0.7}>
-                    <Text style={styles.feedbackSubmitButtonText}>{feedbackLoading ? 'Submitting...' : 'Submit Feedback'}</Text>
-                  </TouchableOpacity>
-                  {feedbackSuccess && (
-                    <Text style={[styles.feedbackSuccessText, { color: themeColors.accentColor }]}>Thank you for your feedback! 🙌 (We're probably not going to read it)</Text>
+                  {/* Hourly Forecast in Modal */}
+                  {selectedForecastDayData.hourly && selectedForecastDayData.hourly.length > 0 && (
+                    <View style={styles.modalHourlyForecastContainer}>
+                      <Text style={[styles.modalSectionTitle, { color: themeColors.text }]}>Hourly Forecast</Text>
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.modalHourlyScrollView}>
+                        {selectedForecastDayData.hourly.map((hour, index) => (
+                          <View key={index} style={[styles.modalHourlyItem, { backgroundColor: darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }]}>
+                            <Text style={[styles.modalHourlyTimeText, { color: themeColors.text }]}>{hour.hourPart}</Text>
+                            <Image source={iconMap[hour.iconName] || iconMap['wind-icon.png']} style={styles.modalHourlyIcon} />
+                            <Text style={[styles.modalHourlyTempText, { color: themeColors.text }]}>{hour.temp}°</Text>
+                            {hour.precipitation_probability !== null && <Text style={[styles.modalHourlyPrecipText, { color: themeColors.accentColor }]}>{hour.precipitation_probability}% 💧</Text>}
+                          </View>
+                        ))}
+                      </ScrollView>
+                    </View>
                   )}
 
-                  {/* Spacer View to push the following content to the bottom */}
-                  <View style={{ flex: 1 }} />
-                  <View style={styles.bottomInfoContainer}>
-                    <Text style={[styles.bottomInfoText, { color: themeColors.subText }]}>SkyC⚡st v1.0</Text>
-                    <Text style={[styles.bottomInfoText, { color: themeColors.subText }]}>Made in Adilabad</Text>
-                  </View>
+                  <TouchableOpacity
+                    style={[styles.modalCloseButton, { backgroundColor: themeColors.buttonBg }]}
+                    onPress={closeForecastModal}
+                  >
+                    <Text style={styles.modalCloseButtonText}>Close</Text>
+                  </TouchableOpacity>
                 </View>
-              )}
-            </Animated.View>
-          </ScrollView>
-        </KeyboardAvoidingView>
-
-      </LinearGradient>
-    </View>
+              </View>
+            </Modal>
+          )}
+        </LinearGradient>
+      </View>
   );
 }
 
@@ -1319,6 +1751,15 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlign: 'center',
   },
+  loadingDotsContainer: { // Container for the animated dots
+    flexDirection: 'row',
+    marginTop: 5,
+  },
+  loadingDot: { // Style for each dot
+    fontSize: 30, // Make dots larger
+    lineHeight: 30, // Align them vertically
+    marginHorizontal: 2,
+  },
   fakeDataContainer: {
     width: '100%',
     alignItems: 'center',
@@ -1345,6 +1786,25 @@ const styles = StyleSheet.create({
     shadowRadius: 12, 
     // elevation: 8, // Removing elevation for a more iOS-like shadow (shadow props above work for iOS)
     alignItems: 'center', // Center content within the card
+  },
+  currentLocationButton: { // Styles for the button INSIDE the weather card
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    paddingVertical: 12,
+    paddingHorizontal: 15,
+    borderRadius: 10,
+    borderWidth: 1,
+    // marginBottom is set inline
+  },
+  currentLocationButtonIcon: {
+    fontSize: 18,
+    marginRight: 8,
+  },
+  currentLocationButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
   },
   locationText: {
     fontSize: 28, // Increased size
@@ -1540,5 +2000,142 @@ const styles = StyleSheet.create({
     opacity: 0.7,        // Make it a bit muted
     marginBottom: 4,     // Space between the two lines of text
     // color will be themed via inline style
+  },
+  // Styles for 7-Day Forecast
+  forecastSectionContainer: {
+    marginTop: 20,
+    width: '100%',
+  },
+  forecastSectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  forecastScrollView: {
+    paddingHorizontal: 5, 
+  },
+  forecastItemContainer: {
+    alignItems: 'center',
+    marginHorizontal: 8, 
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    minWidth: 70, 
+  },
+  forecastDayText: {
+    fontSize: 14,
+    fontWeight: '500', 
+  },
+  forecastIcon: {
+    width: 40, 
+    height: 40,
+    marginVertical: 5,
+  },
+  forecastTempText: {
+    fontSize: 16,
+  },
+  // Styles for Detailed Forecast Modal
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.6)', // Dark overlay
+  },
+  modalContent: {
+    width: '85%',
+    maxWidth: 350,
+    padding: 20,
+    borderRadius: 15,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 15,
+  },
+  modalWeatherIcon: {
+    width: 70,
+    height: 70,
+    resizeMode: 'contain',
+    marginBottom: 10,
+  },
+  modalCondition: {
+    fontSize: 18,
+    fontWeight: '500',
+    marginBottom: 5,
+  },
+  modalDescription: {
+    fontSize: 15,
+    marginBottom: 15,
+    textAlign: 'center',
+  },
+  modalTemp: {
+    fontSize: 16,
+    marginBottom: 20,
+  },
+  modalSunriseSunsetContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    width: '100%',
+    marginBottom: 15,
+  },
+  modalSunriseSunsetText: {
+    fontSize: 14,
+  },
+  modalCloseButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 30,
+    borderRadius: 25,
+  },
+  modalCloseButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  // Styles for Hourly Forecast in Modal
+  modalHourlyForecastContainer: {
+    width: '100%',
+    marginTop: 10,
+    marginBottom: 15,
+  },
+  modalSectionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  modalHourlyScrollView: {
+    paddingVertical: 5,
+  },
+  modalHourlyItem: {
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    marginHorizontal: 5,
+    minWidth: 65,
+  },
+  modalHourlyTimeText: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  modalHourlyIcon: {
+    width: 30,
+    height: 30,
+    marginVertical: 3,
+  },
+  modalHourlyTempText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  modalHourlyPrecipText: {
+    fontSize: 12,
+    marginTop: 2,
   },
 });
